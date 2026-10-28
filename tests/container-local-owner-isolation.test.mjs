@@ -54,3 +54,8 @@ exit 0
     rmSync(root, { recursive: true, force: true });
   }
 });
+
+test("trusted fixture discovers the published port with the service and private port arguments", () => {
+  const script = readFileSync("scripts/verify-container.sh", "utf8");
+  assert.match(script, /binding=\$\(compose port sticker 8787\)/);
+});

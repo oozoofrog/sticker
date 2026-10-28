@@ -110,7 +110,7 @@ exec 3>&- 4>&-
 verify_mcp
 # Switch only this disposable project to an explicitly trusted deployment.
 # Reuse its discovered nondefault ephemeral port so APP_ORIGIN and publication agree.
-binding=$(compose port 8787)
+binding=$(compose port sticker 8787)
 local_port=${binding##*:}
 [[ "$local_port" =~ ^[0-9]+$ && "$local_port" != 8787 ]] || { echo 'Expected nondefault fixture port.' >&2; exit 1; }
 compose stop sticker
