@@ -1,3 +1,4 @@
+import { githubProviderFromEnvironment } from "./github-provider-config.js";
 import { readFileSync } from "node:fs";
 import { createApp } from "./app.js";
 import { agentsSchema } from "./auth.js";
@@ -8,6 +9,7 @@ const agentInput: unknown = process.env.AGENT_CONFIG_PATH
   ? JSON.parse(readFileSync(process.env.AGENT_CONFIG_PATH, "utf8"))
   : [];
 const instance = createApp({
+  githubProvider: githubProviderFromEnvironment(process.env),
   dataDir: process.env.DATA_DIR ?? "data",
   ownerPassword: process.env.OWNER_PASSWORD ?? "",
   agents: agentsSchema.parse(agentInput),

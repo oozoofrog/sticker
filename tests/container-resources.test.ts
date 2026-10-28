@@ -155,7 +155,7 @@ void test("resource container fixture verifies real HTTP initialize, recreate an
     await app.close();
   }
   const before = readFileSync(join(root, "sticker.sqlite"));
-  assert.deepEqual(validateBackup(root), { schemaVersion: 7, fileCount: 3 });
+  assert.deepEqual(validateBackup(root), { schemaVersion: 8, fileCount: 3 });
   assert.deepEqual(readFileSync(join(root, "sticker.sqlite")), before);
   assert.equal(
     readdirSync(join(root, "uploads")).length,

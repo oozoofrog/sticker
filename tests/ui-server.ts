@@ -1,3 +1,4 @@
+import { githubBrowserFixture } from "./github-provider-fixture.js";
 import { createHash } from "node:crypto";
 /** Disposable browser-test server. Never loads the operator's environment credentials or data. */
 import { mkdtempSync, rmSync } from "node:fs";
@@ -7,6 +8,7 @@ import { createApp } from "../server/app.js";
 const port = 8788;
 const dataDir = mkdtempSync(join(tmpdir(), "sticker-browser-fixture-"));
 const instance = createApp({
+  githubProvider: githubBrowserFixture(),
   dataDir,
   ownerPassword: "ephemeral-sticker-test-password",
   agents: [

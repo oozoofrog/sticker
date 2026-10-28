@@ -24,6 +24,10 @@ Store interface (domain owner implements `server/domain.ts`): `new Store(dataDir
 
 소유자 관리·불변 버전·정확한 필수 값 오류와 같은 일반 이슈 생성 경로의 템플릿 적용을 제공합니다. 생성 출처는 일반 PATCH로 변경할 수 없습니다. [API, 권한, 중복 처리, 이관 및 검증](ISSUE-TEMPLATES.md).
 
+## GitHub 근거
+
+선택적 읽기 공급자와 프로젝트별 소유자 동의, revision CAS, 정확한 SHA별 CI 캐시를 사용합니다. [엔드포인트·인증·오류 및 구성](GITHUB-EVIDENCE.md)을 참고하세요. 기본 설치에는 외부 계정/토큰이 필요하지 않습니다.
+
 ## 공통 자료 (schema7)
 
 프로젝트/버전의 문서·파일·링크, 불변 버전, 지침, 고정된 이슈/결과 참조는 [자료 계약](RESOURCES.md)을 참고하세요. 일반 이슈 첨부와 별도 수명이며 연결 해제나 tombstone이 공유 파일을 삭제하지 않습니다. 현재 권한/CAS와 owner-only 지침 경계는 HTTP와 MCP가 공유합니다.

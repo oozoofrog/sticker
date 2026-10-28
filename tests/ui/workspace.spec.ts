@@ -21,7 +21,7 @@ test("owner can build a project, track an issue, attach context and retain it af
 }) => {
   await page.goto("/");
   await expect(
-    page.getByRole("heading", { name: /생각을 붙이고/ }),
+    page.getByRole("heading", { name: "나의 작업 공간으로", level: 1 }),
   ).toBeVisible();
   await page.getByLabel("소유자 비밀번호").fill(password);
   await page.getByRole("button", { name: "작업 공간 열기" }).click();

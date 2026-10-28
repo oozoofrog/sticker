@@ -21,6 +21,8 @@ const child = spawn(process.execPath, ["dist/server/index.js"], {
     APP_ORIGIN: origin,
     OWNER_PASSWORD: password,
     AGENT_CONFIG_PATH: "",
+    GITHUB_READ_ENABLED: "false",
+    GITHUB_CREDENTIAL_CONFIG_PATH: "",
   },
   stdio: ["ignore", "pipe", "pipe"],
 });

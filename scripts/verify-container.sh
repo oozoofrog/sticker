@@ -18,6 +18,7 @@ export STICKER_IMAGE="$project:fixture" STICKER_PORT=0
 export OWNER_PASSWORD="fixture-only-$RANDOM-$RANDOM-$RANDOM-$RANDOM"
 export APP_ORIGIN=http://localhost:8787 SECURE_COOKIES=false AGENT_CONFIG_PATH=
 export STICKER_AGENT_TOKEN= STICKER_AGENT_CONFIG=
+export GITHUB_READ_ENABLED=false GITHUB_CREDENTIAL_CONFIG_PATH=
 mcp_pid=
 compose() { docker compose --env-file /dev/null "$@"; }
 cleanup() {
@@ -56,7 +57,7 @@ docker buildx imagetools inspect --raw "$expected_image" | \
 # Launcher boundary tests use only built-in Node APIs and Bash in the image.
 docker run --rm --network none --entrypoint node \
   --mount "type=bind,source=$root,target=/verification,readonly" --workdir /verification \
-  "$STICKER_IMAGE" --test tests/container.test.mjs tests/host-tools.test.mjs tests/container-readiness.test.mjs tests/container-toolchain.test.mjs
+  "$STICKER_IMAGE" --test tests/container.test.mjs tests/host-tools.test.mjs tests/container-readiness.test.mjs tests/container-toolchain.test.mjs tests/container-github-isolation.test.mjs
 # Generated only in this disposable test; never persisted in the checkout/logs.
 OWNER_PASSWORD=$(docker run --rm --network none --entrypoint node "$STICKER_IMAGE" -e 'process.stdout.write(require("node:crypto").randomBytes(32).toString("hex"))')
 export OWNER_PASSWORD
@@ -66,12 +67,14 @@ compose exec -T sticker node --input-type=module - initialize < tests/container-
 compose exec -T sticker node --input-type=module - initialize < tests/container-views-smoke.mjs
 compose exec -T sticker node --input-type=module - initialize < tests/container-templates-smoke.mjs
 compose exec -T sticker node --input-type=module - initialize < tests/container-resources-smoke.mjs
+compose exec -T sticker node --input-type=module - initialize < tests/container-github-smoke.mjs
 compose up -d --force-recreate --wait --wait-timeout 90 sticker
 compose exec -T sticker node --input-type=module - verify < tests/container-smoke.mjs
 compose exec -T sticker node --input-type=module - verify < tests/container-release-smoke.mjs
 compose exec -T sticker node --input-type=module - verify < tests/container-views-smoke.mjs
 compose exec -T sticker node --input-type=module - verify < tests/container-templates-smoke.mjs
 compose exec -T sticker node --input-type=module - verify < tests/container-resources-smoke.mjs
+compose exec -T sticker node --input-type=module - verify < tests/container-github-smoke.mjs
 bash scripts/backup.sh "$temporary/fixture.tar.gz"
 # backup restarts an originally running service, but `start` is not health readiness.
 compose up -d --wait --wait-timeout 90 sticker
@@ -83,6 +86,7 @@ compose exec -T sticker node --input-type=module - verify < tests/container-rele
 compose exec -T sticker node --input-type=module - verify < tests/container-views-smoke.mjs
 compose exec -T sticker node --input-type=module - verify < tests/container-templates-smoke.mjs
 compose exec -T sticker node --input-type=module - verify < tests/container-resources-smoke.mjs
+compose exec -T sticker node --input-type=module - verify < tests/container-github-smoke.mjs
 
 # Agent access is optional. Add a generated read-only grant only after core tests.
 STICKER_AGENT_TOKEN=$(docker run --rm --network none --entrypoint node "$STICKER_IMAGE" -e 'process.stdout.write(require("node:crypto").randomBytes(32).toString("hex"))')

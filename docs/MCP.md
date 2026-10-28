@@ -133,6 +133,10 @@ Codex 설정은 사용자가 직접 `~/.codex/config.toml` 또는 선택한 프�
 
 `sticker_list_templates`, `sticker_get_template`, `sticker_preview_template`은 현재 범위의 정의를 읽습니다. `sticker_create_issue`의 `templateId`, 현재 `templateVersion`, `templateValues`, UUID `operationId`로 같은 필수 값 검증을 거쳐 생성합니다. 템플릿 관리/실행/승인 도구는 없습니다. [정확한 생성 및 재시도 계약](ISSUE-TEMPLATES.md).
 
+### GitHub 근거 (읽기 전용)
+
+`sticker_get_github_evidence({issueId})`는 이슈와 같은 프로젝트 권한으로 저장된 PR/커밋·CI 근거를 읽습니다. 조회 자체는 GitHub 네트워크 요청을 하지 않으며 쓰기·병합·CI 실행 권한이 없습니다. [연결 및 상태 규칙](GITHUB-EVIDENCE.md).
+
 ## 프로젝트·버전 공통 자료 (schema7)
 
 - `sticker_list_resources`: 같은 엄격한 프로젝트/버전/kind/검색 조건으로 권한 내 활성 자료를 조회합니다.

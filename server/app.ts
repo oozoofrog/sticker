@@ -1,5 +1,7 @@
 import { registerResourceRoutes } from "./routes/resources.js";
 import { FileStorage } from "./file-storage.js";
+import { registerGithubRoutes } from "./routes/github.js";
+import type { GithubProvider } from "./features/github.js";
 import { registerTemplateRoutes } from "./routes/templates.js";
 import express, { type ErrorRequestHandler, type Request } from "express";
 import multer from "multer";
@@ -14,6 +16,7 @@ import { registerSessionRoutes } from "./routes/sessions.js";
 import type { Actor } from "./types.js";
 export interface AppConfig {
   dataDir: string;
+  githubProvider?: GithubProvider;
   ownerPassword: string;
   agents?: AgentConfig[];
   appOrigin?: string;
@@ -43,6 +46,7 @@ export function createApp(config: AppConfig) {
       Date.now,
       appOrigin.origin,
       auth.directory(),
+      config.githubProvider,
     ),
     files = new FileStorage(dataDir),
     app = express();
@@ -122,6 +126,7 @@ export function createApp(config: AppConfig) {
       .status(204)
       .end();
   });
+  registerGithubRoutes(app, store.github);
   registerTemplateRoutes(app, store.templates);
   registerResourceRoutes(app, store.resources, files);
   registerSessionRoutes(app, store.sessions);

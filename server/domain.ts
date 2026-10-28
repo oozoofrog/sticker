@@ -1,3 +1,4 @@
+import { GithubService, type GithubProvider } from "./features/github.js";
 import {
   projectSchema,
   versionSchema,
@@ -203,6 +204,7 @@ function reportRow(row: Row): AgentReport {
 /** All authorization and business rules shared by HTTP and MCP live here. */
 export class Store {
   private context: StoreContext;
+  readonly github: GithubService;
   readonly resources: ResourceService;
   readonly templates: TemplateService;
   readonly sessions: SessionService;
@@ -225,9 +227,11 @@ export class Store {
         projectIds: null,
       },
     ],
+    githubProvider: GithubProvider = { enabled: false },
   ) {
     this.context = new StoreContext(dataDir, clock);
     this.resources = new ResourceService(this.context);
+    this.github = new GithubService(this.context, githubProvider);
     this.templates = new TemplateService(this.context, actors);
     this.sessions = new SessionService(this.context);
     this.relations = new RelationService(this.context);

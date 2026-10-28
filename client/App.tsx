@@ -1,5 +1,6 @@
 import { ResourceWorkspace } from "./features/resources/ResourceWorkspace.js";
 import TemplateWorkspace from "./features/templates/TemplateWorkspace.js";
+import { GithubSettings } from "./features/github/GithubSettings.js";
 import { SavedIssueWorkspace } from "./features/views/SavedIssueWorkspace.js";
 import { SavedViewNavigation } from "./features/views/SavedViewNavigation.js";
 import VersionDetail from "./features/releases/VersionDetail.js";
@@ -21,6 +22,7 @@ import { readRoute, navigate, subscribeRoute, type Route } from "./router.js";
 import AgentSessions from "./features/sessions/AgentSessions.js";
 import OwnerInbox from "./features/sessions/OwnerInbox.js";
 export default function App() {
+  const [githubProject, setGithubProject] = useState<string | null>(null);
   const [data, setData] = useState<Bootstrap | null>(null);
   const relations = useRelationSummaries(data);
   const [loading, setLoading] = useState(true);
@@ -386,6 +388,18 @@ export default function App() {
               )}
             </div>
             <div className="heading-actions">
+              {project &&
+                route.section === "issues" &&
+                data.actor.role === "owner" && (
+                  <button
+                    className="button secondary"
+                    onClick={() => {
+                      setGithubProject(project.id);
+                    }}
+                  >
+                    GitHub 연결
+                  </button>
+                )}
               {project && ["issues", "versions"].includes(route.section) && (
                 <button
                   className="button secondary"
@@ -788,8 +802,7 @@ export default function App() {
                   </div>
                 ) : (
                   <Empty
-                    title="다음 릴리스를 위한 한 장"
-                    description="버전을 만들고 목표 이슈를 연결해 보세요. 발견한 버전과 수정한 버전도 별도로 남길 수 있어요."
+                    title="버전 없음"
                     action={
                       <button className="button primary" onClick={newVersion}>
                         첫 버전 만들기
@@ -823,6 +836,15 @@ export default function App() {
           <Icon name="check" size={17} />
           {notice}
         </div>
+      )}
+      {githubProject && (
+        <GithubSettings
+          key={githubProject}
+          projectId={githubProject}
+          onClose={() => {
+            setGithubProject(null);
+          }}
+        />
       )}
       {projectEditor && (
         <ProjectEditor
@@ -949,42 +971,12 @@ function Login({
           <Icon name="lock" size={13} /> YOUR PRIVATE WORKSPACE
         </span>
       </header>
-      <main className="login-content">
-        <div className="login-story">
-          <div className="eyebrow">SMALL NOTES. CLEAR DIRECTION.</div>
-          <h1>
-            생각을 붙이고,
-            <br />
-            일을 움직여요.
-          </h1>
-
-          <div className="login-stickers" aria-hidden="true">
-            <div className="login-sticker green">
-              <span>IDEA → DONE</span>
-              <strong>
-                한 장씩,
-                <br />
-                앞으로.
-              </strong>
-              <i>↗</i>
-            </div>
-            <div className="login-sticker purple">
-              <span>LESS NOISE.</span>
-              <strong>
-                더 선명한
-                <br />
-                다음 할 일.
-              </strong>
-              <i>✳</i>
-            </div>
-            <span className="login-scribble">붙여 두면, 잊지 않으니까.</span>
-          </div>
-        </div>
+      <main className="login-content login-content--auth-only">
         <section className="login-card">
           <span className="login-card-icon">
             <Icon name="lock" size={25} />
           </span>
-          <h2>나의 작업 공간으로</h2>
+          <h1 className="login-title">나의 작업 공간으로</h1>
           <form
             onSubmit={(e) => {
               void (async () => {
@@ -1031,7 +1023,6 @@ function Login({
           </div>
         </section>
       </main>
-      <footer>STICKER — FOR YOUR NEXT LITTLE BIG THING.</footer>
     </div>
   );
 }
