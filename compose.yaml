@@ -8,7 +8,8 @@ services:
     ports:
       - "127.0.0.1:${STICKER_PORT:-8787}:8787"
     environment:
-      OWNER_PASSWORD: ${OWNER_PASSWORD:?Set OWNER_PASSWORD in .env before starting}
+      OWNER_PASSWORD: ${OWNER_PASSWORD:-}
+      LOCAL_OWNER_MODE: ${LOCAL_OWNER_MODE:-off}
       APP_ORIGIN: ${APP_ORIGIN:-http://localhost:8787}
       SECURE_COOKIES: ${SECURE_COOKIES:-false}
       DATA_DIR: /app/data

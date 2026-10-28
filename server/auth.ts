@@ -15,6 +15,7 @@ export interface AgentConfig {
 }
 export interface AuthOptions {
   ownerPassword: string;
+  ownerPasswordEnabled?: boolean;
   agents?: AgentConfig[];
   sessionTtlMs?: number;
 }
@@ -43,16 +44,17 @@ const owner: Actor = {
 };
 export class AuthManager {
   private salt = randomBytes(32);
-  private passwordHash: Buffer;
+  private passwordHash?: Buffer;
   private sessions = new Map<string, number>();
   private failures = new Map<string, { count: number; until: number }>();
   private agents: AgentConfig[];
   private sessionTtlMs: number;
   constructor(options: AuthOptions) {
     if (
-      typeof options.ownerPassword !== "string" ||
-      options.ownerPassword.length < 12 ||
-      options.ownerPassword.length > 1024
+      options.ownerPasswordEnabled !== false &&
+      (typeof options.ownerPassword !== "string" ||
+        options.ownerPassword.length < 12 ||
+        options.ownerPassword.length > 1024)
     )
       throw new Error(
         "OWNER_PASSWORD must be 12–1024 characters; no default credential is provided.",
@@ -63,7 +65,8 @@ export class AuthManager {
       new Set(this.agents.map((a) => a.tokenHash)).size !== this.agents.length
     )
       throw new Error("Agent IDs and token hashes must be unique.");
-    this.passwordHash = scryptSync(options.ownerPassword, this.salt, 32);
+    if (options.ownerPasswordEnabled !== false)
+      this.passwordHash = scryptSync(options.ownerPassword, this.salt, 32);
     this.sessionTtlMs = options.sessionTtlMs ?? 12 * 60 * 60 * 1000;
   }
   directory(): Actor[] {
@@ -86,7 +89,7 @@ export class AuthManager {
       ?.slice(16);
   }
   authenticate(authorization?: string, cookie?: string): Actor | null {
-    if (authorization) {
+    if (authorization !== undefined) {
       if (!authorization.startsWith("Bearer ") || authorization.length > 4096)
         return null;
       const hash = sha(authorization.slice(7));
@@ -116,6 +119,7 @@ export class AuthManager {
     return { ...owner };
   }
   login(password: unknown, ip: string): string | null {
+    if (!this.passwordHash) return null;
     const now = Date.now();
     for (const [key, value] of this.failures)
       if (value.until <= now) this.failures.delete(key);

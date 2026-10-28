@@ -16,3 +16,6 @@ backups/
 
 # Local lint output
 lint-report.json
+
+playwright-report-local-owner/
+test-results-local-owner/
