@@ -1,6 +1,7 @@
 import { ResourceWorkspace } from "./features/resources/ResourceWorkspace.js";
 import TemplateWorkspace from "./features/templates/TemplateWorkspace.js";
 import { GithubSettings } from "./features/github/GithubSettings.js";
+import { McpSettings } from "./features/mcp-settings/McpSettings.js";
 import { SavedIssueWorkspace } from "./features/views/SavedIssueWorkspace.js";
 import { SavedViewNavigation } from "./features/views/SavedViewNavigation.js";
 import VersionDetail from "./features/releases/VersionDetail.js";
@@ -22,6 +23,7 @@ import { readRoute, navigate, subscribeRoute, type Route } from "./router.js";
 import AgentSessions from "./features/sessions/AgentSessions.js";
 import OwnerInbox from "./features/sessions/OwnerInbox.js";
 export default function App() {
+  const [mcpSettings, setMcpSettings] = useState(false);
   const [githubProject, setGithubProject] = useState<string | null>(null);
   const [data, setData] = useState<Bootstrap | null>(null);
   const relations = useRelationSummaries(data);
@@ -205,7 +207,8 @@ export default function App() {
             projectEditor ||
             versionEditor ||
             issueEditor ||
-            deleteTarget
+            deleteTarget ||
+            mcpSettings
           )
         }
       >
@@ -270,6 +273,16 @@ export default function App() {
             <Icon name="message" />
             <span>사용자 확인함</span>
           </button>
+          {data.actor.role === "owner" && (
+            <button
+              onClick={() => {
+                setMcpSettings(true);
+              }}
+            >
+              <Icon name="link" />
+              <span>MCP 연결</span>
+            </button>
+          )}
         </nav>
         <div className="project-nav-header">
           <span className="nav-label">MY PROJECTS</span>
@@ -340,7 +353,8 @@ export default function App() {
             projectEditor ||
             versionEditor ||
             issueEditor ||
-            deleteTarget
+            deleteTarget ||
+            mcpSettings
           )
         }
       >
@@ -836,6 +850,14 @@ export default function App() {
           <Icon name="check" size={17} />
           {notice}
         </div>
+      )}
+      {mcpSettings && data.actor.role === "owner" && (
+        <McpSettings
+          projects={data.projects}
+          onClose={() => {
+            setMcpSettings(false);
+          }}
+        />
       )}
       {githubProject && (
         <GithubSettings

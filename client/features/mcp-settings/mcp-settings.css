@@ -1,0 +1,91 @@
+.mcp-settings {
+  display: grid;
+  gap: 18px;
+  padding: 22px 26px;
+  min-width: 0;
+}
+.mcp-settings section,
+.mcp-settings .field,
+.mcp-settings input,
+.mcp-settings textarea {
+  min-width: 0;
+  max-width: 100%;
+}
+.mcp-settings input,
+.mcp-settings textarea {
+  width: 100%;
+}
+.mcp-settings textarea {
+  font-family: monospace;
+  overflow: auto;
+}
+.mcp-connection-facts {
+  display: grid;
+  grid-template-columns: repeat(2, minmax(0, 1fr));
+  gap: 14px;
+  margin: 0;
+}
+.mcp-connection-facts dt {
+  color: var(--muted);
+  font-size: 12px;
+}
+.mcp-connection-facts dd {
+  margin: 4px 0 0;
+  overflow-wrap: anywhere;
+}
+.mcp-connection-facts dd > span {
+  display: block;
+  font-size: 12px;
+}
+.mcp-settings-actions,
+.mcp-grants > li > div {
+  display: flex;
+  flex-wrap: wrap;
+  align-items: center;
+  gap: 10px;
+}
+.mcp-settings-actions a {
+  text-decoration: underline;
+}
+.mcp-permission-recommendation {
+  margin: 6px 0 10px;
+  font-size: 12px;
+}
+.mcp-grants {
+  display: grid;
+  gap: 10px;
+  padding: 0;
+  margin: 0;
+  list-style: none;
+}
+.mcp-grants > li {
+  padding: 12px;
+  border: 1px solid var(--border);
+  border-radius: 8px;
+  overflow-wrap: anywhere;
+}
+.mcp-grants ul {
+  padding-left: 20px;
+  margin: 6px 0 0;
+}
+.mcp-grants code {
+  display: inline-block;
+  margin-left: 6px;
+  font-size: 11px;
+  overflow-wrap: anywhere;
+}
+.mcp-config-builder {
+  display: grid;
+  gap: 12px;
+}
+@media (max-width: 640px) {
+  .mcp-settings {
+    padding: 18px;
+  }
+  .mcp-connection-facts {
+    grid-template-columns: minmax(0, 1fr);
+  }
+  .mcp-settings textarea {
+    font-size: 16px;
+  }
+}
