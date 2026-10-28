@@ -1,3 +1,4 @@
+import { IssueHistory } from "./features/history/IssueHistory.js";
 import { IssueGithubEvidence } from "./features/github/IssueGithubEvidence.js";
 import { IssueResources } from "./features/resources/IssueResources.js";
 import { IssueRelations } from "./features/relations/IssueRelations.js";
@@ -28,7 +29,9 @@ export default function IssuePanel({
   onChanged: () => Promise<void>;
   onOpen?: (id: string) => void;
 }) {
-  const [detail, setDetail] = useState<IssueDetail | null>(null);
+  const [snapshot, setDetail] = useState<IssueDetail | null>(null);
+  const detail = snapshot?.issue.id === id ? snapshot : null;
+  const loadSequence = useRef(0);
   const [error, setError] = useState("");
   const [editing, setEditing] = useState(false);
   const [removing, setRemoving] = useState(false);
@@ -36,23 +39,27 @@ export default function IssuePanel({
   const [busy, setBusy] = useState(false);
   const [uploading, setUploading] = useState(false);
   const [linkModal, setLinkModal] = useState(false);
+  const [historyModal, setHistoryModal] = useState(false);
   const [tab, setTab] = useState<"comments" | "activity">("comments");
   const panel = useRef<HTMLDivElement>(null);
-  const reload = useCallback(
-    () =>
-      api(`/issues/${id}`, undefined, issueDetailSchema).then(
-        (next) => {
-          setDetail(next);
-          setError("");
-        },
-        (e: unknown) => {
-          setError(errorText(e));
-        },
-      ),
-    [id],
-  );
+  const reload = useCallback(() => {
+    const ticket = ++loadSequence.current;
+    return api(`/issues/${id}`, undefined, issueDetailSchema).then(
+      (next) => {
+        if (ticket !== loadSequence.current) return;
+        setDetail(next);
+        setError("");
+      },
+      (reason: unknown) => {
+        if (ticket === loadSequence.current) setError(errorText(reason));
+      },
+    );
+  }, [id]);
   useEffect(() => {
     void reload();
+    return () => {
+      loadSequence.current += 1;
+    };
   }, [reload]);
   useEffect(() => {
     const previous =
@@ -144,7 +151,7 @@ export default function IssuePanel({
       <aside
         ref={panel}
         className="issue-panel"
-        inert={editing || removing || linkModal}
+        inert={editing || removing || linkModal || historyModal}
         role="dialog"
         aria-modal="true"
         aria-label="이슈 상세"
@@ -441,7 +448,6 @@ export default function IssuePanel({
                       maxLength={20000}
                     />
                     <footer>
-                      <span>모든 기록에는 작성자가 남아요.</span>
                       <button
                         className="button primary small"
                         disabled={busy || !comment.trim()}
@@ -452,22 +458,21 @@ export default function IssuePanel({
                   </form>
                 </>
               ) : (
-                <div className="activity-list">
-                  {detail.activity.map((a) => (
-                    <article key={a.id}>
-                      <span className="activity-dot" />
-                      <div>
-                        <p>
-                          <strong>{a.authorName}</strong>{" "}
-                          <span>{a.detail || a.action}</span>
-                        </p>
-                        <time dateTime={a.createdAt}>
-                          {dateText(a.createdAt, true)}
-                        </time>
-                      </div>
-                    </article>
-                  ))}
-                </div>
+                <IssueHistory
+                  issue={issue}
+                  data={data}
+                  activity={detail.activity}
+                  onModalChange={setHistoryModal}
+                  onRestored={(confirmed) => {
+                    loadSequence.current += 1;
+                    setDetail((current) =>
+                      current ? { ...current, issue: confirmed } : current,
+                    );
+                    void changed().catch((reason: unknown) => {
+                      setError(errorText(reason));
+                    });
+                  }}
+                />
               )}
             </section>
           </div>

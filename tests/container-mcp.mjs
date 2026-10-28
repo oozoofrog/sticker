@@ -44,6 +44,40 @@ try {
     "Container template fixture",
     "Portable fixture",
   ]);
+  assert.equal(
+    tools.tools.some(({ name }) => name.includes("restore")),
+    false,
+  );
+  const historyIssues = await client.callTool({
+    name: "sticker_list_issues",
+    arguments: { query: "Container history fixture" },
+  });
+  assert.ok(!historyIssues.isError);
+  const issue = JSON.parse(historyIssues.content[0].text).find(
+    (value) => value.title === "Container history fixture",
+  );
+  assert.ok(issue);
+  const historyResult = await client.callTool({
+    name: "sticker_list_issue_history",
+    arguments: { issueId: issue.id },
+  });
+  assert.ok(!historyResult.isError);
+  const restored = JSON.parse(historyResult.content[0].text).find(
+    (value) => value.action === "restored",
+  );
+  assert.ok(restored);
+  const comparison = await client.callTool({
+    name: "sticker_get_issue_change",
+    arguments: { issueId: issue.id, changeId: restored.id },
+  });
+  assert.ok(!comparison.isError);
+  assert.deepEqual(JSON.parse(comparison.content[0].text).changes, [
+    {
+      field: "description",
+      before: "Changed history body",
+      after: "Original history body",
+    },
+  ]);
   const denied = await client.callTool({
     name: "sticker_create_issue",
     arguments: { projectId: projects[0].id, title: "Read-only must refuse" },
@@ -51,7 +85,7 @@ try {
   assert.equal(denied.isError, true);
   assert.equal(JSON.parse(denied.content[0].text).status, 403);
   console.error(
-    "Container MCP smoke passed: initialize, tools, authenticated read, read-only denial",
+    "Container MCP smoke passed: initialize, tools, authenticated history comparison, read-only denial",
   );
 } finally {
   clearTimeout(timeout);

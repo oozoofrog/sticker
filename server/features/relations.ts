@@ -65,15 +65,14 @@ export class RelationService {
     edge: IssueRelation,
   ) {
     for (const issue of [source, target]) {
-      this.ctx.update("issues", issue.id, {
-        revision: issue.revision + 1,
-        updatedAt: this.ctx.now(),
-      });
-      this.ctx.activity(
+      this.ctx.changeIssue(
         actor,
-        issue.id,
-        action,
-        `${edge.kind}: ${source.key} → ${target.key}`,
+        issue,
+        {},
+        {
+          action,
+          detail: `${edge.kind}: ${source.key} → ${target.key}`,
+        },
       );
     }
   }
@@ -191,15 +190,14 @@ export class RelationService {
         actor,
         edge.sourceIssueId === id ? edge.targetIssueId : edge.sourceIssueId,
       );
-      this.ctx.update("issues", other.id, {
-        revision: other.revision + 1,
-        updatedAt: this.ctx.now(),
-      });
-      this.ctx.activity(
+      this.ctx.changeIssue(
         actor,
-        other.id,
-        "relation_target_deleted",
-        `${edge.kind}: ${issue.key} 삭제로 관계 해제`,
+        other,
+        {},
+        {
+          action: "relation_target_deleted",
+          detail: `${edge.kind}: ${issue.key} 삭제로 관계 해제`,
+        },
       );
     }
   }

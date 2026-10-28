@@ -1,5 +1,6 @@
 import { registerResourceRoutes } from "./routes/resources.js";
 import { FileStorage } from "./file-storage.js";
+import { registerHistoryRoutes } from "./routes/history.js";
 import { registerGithubRoutes } from "./routes/github.js";
 import type { GithubProvider } from "./features/github.js";
 import { registerTemplateRoutes } from "./routes/templates.js";
@@ -126,6 +127,7 @@ export function createApp(config: AppConfig) {
       .status(204)
       .end();
   });
+  registerHistoryRoutes(app, store.history);
   registerGithubRoutes(app, store.github);
   registerTemplateRoutes(app, store.templates);
   registerResourceRoutes(app, store.resources, files);
