@@ -2682,6 +2682,7 @@ main {
     padding-right: 2px;
   }
   .heading-actions {
+    flex-wrap: wrap;
     margin-top: 7px;
     width: 100%;
     justify-content: flex-end;

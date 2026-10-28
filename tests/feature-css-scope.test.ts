@@ -23,3 +23,14 @@ void test("resource and GitHub feature rules retain independent selector scopes"
   assert.ok(resources >= 30);
   assert.ok(github >= 10);
 });
+
+void test("mobile heading actions wrap instead of clipping the first project control", () => {
+  const root = postcss.parse(readFileSync("client/styles.css", "utf8"));
+  const declarations: string[] = [];
+  root.walkRules(".heading-actions", (rule) => {
+    rule.walkDecls("flex-wrap", (declaration) => {
+      declarations.push(declaration.value);
+    });
+  });
+  assert.ok(declarations.includes("wrap"));
+});

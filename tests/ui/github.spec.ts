@@ -38,6 +38,22 @@ test("GitHub explicit connection, readonly evidence states, head mismatch and di
       : { width: 1440, height: 960 },
   );
   await page.goto(`/#project=${project.id}`);
+  for (const name of [
+    "GitHub 연결",
+    "자료실",
+    "프로젝트 편집",
+    "템플릿 관리",
+    "새 이슈",
+  ]) {
+    const button = page.getByRole("button", { name, exact: true });
+    await expect(button).toBeVisible();
+    const box = await button.boundingBox();
+    const viewport = page.viewportSize();
+    if (!box || !viewport)
+      throw new Error("Project control or viewport is missing");
+    expect(box.x).toBeGreaterThanOrEqual(0);
+    expect(box.x + box.width).toBeLessThanOrEqual(viewport.width);
+  }
   await page.getByRole("button", { name: "GitHub 연결", exact: true }).click();
   const settings = page.getByRole("dialog", {
     name: "GitHub 연결",
