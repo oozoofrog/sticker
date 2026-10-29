@@ -1,3 +1,9 @@
+import {
+  LocalOwnerPolicy,
+  localOwnerActor,
+  localOwnerMode,
+  type LocalOwnerMode,
+} from "./local-owner.js";
 import { registerResourceRoutes } from "./routes/resources.js";
 import { FileStorage } from "./file-storage.js";
 import { registerHistoryRoutes } from "./routes/history.js";
@@ -20,6 +26,7 @@ export interface AppConfig {
   dataDir: string;
   githubProvider?: GithubProvider;
   ownerPassword: string;
+  localOwnerMode?: LocalOwnerMode;
   agents?: AgentConfig[];
   appOrigin?: string;
   secureCookies?: boolean;
@@ -33,8 +40,13 @@ function passwordInput(body: unknown): unknown {
     : undefined;
 }
 export function createApp(config: AppConfig) {
+  const mode = localOwnerMode(config.localOwnerMode);
+  const localPolicy = mode
+    ? new LocalOwnerPolicy(config.appOrigin ?? "http://localhost:8787")
+    : null;
   const auth = new AuthManager({
     ownerPassword: config.ownerPassword,
+    ownerPasswordEnabled: !localPolicy,
     agents: config.agents,
   });
   const dataDir = resolve(config.dataDir),
@@ -85,12 +97,30 @@ export function createApp(config: AppConfig) {
     res.set("Cache-Control", "no-store");
     next();
   });
+  app.use("/api", (req, _res, next) => {
+    localPolicy?.validate(
+      req.method,
+      req.rawHeaders,
+      req.headers.authorization !== undefined,
+    );
+    next();
+  });
   app.use("/api", express.json({ limit: "512kb" }));
   app.post("/api/session", (req, res) => {
     if (!req.is("application/json"))
       throw new DomainError(415, "CONTENT_TYPE", "JSON 요청이 필요합니다.");
     if (req.headers.origin && !validOrigin(req.headers.origin))
       throw new DomainError(403, "ORIGIN", "허용되지 않은 요청 출처입니다.");
+    if (localPolicy) {
+      if (req.headers.authorization !== undefined)
+        throw new DomainError(
+          401,
+          "UNAUTHENTICATED",
+          "소유자 접속 요청에 에이전트 인증을 사용할 수 없습니다.",
+        );
+      res.json({ actor: { ...localOwnerActor } });
+      return;
+    }
     const token = auth.login(passwordInput(req.body), req.ip ?? "unknown");
     if (!token)
       throw new DomainError(
@@ -103,10 +133,10 @@ export function createApp(config: AppConfig) {
     });
   });
   app.use("/api", (req, res, next) => {
-    const principal = auth.authenticate(
-      req.headers.authorization,
-      req.headers.cookie,
-    );
+    const principal =
+      localPolicy && req.headers.authorization === undefined
+        ? { ...localOwnerActor }
+        : auth.authenticate(req.headers.authorization, req.headers.cookie);
     if (!principal)
       return res
         .status(401)
@@ -120,8 +150,17 @@ export function createApp(config: AppConfig) {
       throw new DomainError(403, "ORIGIN", "허용되지 않은 요청 출처입니다.");
     next();
   });
+  app.get("/api/access-mode", (_req, res) =>
+    res.json({ mode: mode ?? "password" }),
+  );
   app.get("/api/session", (req, res) => res.json({ actor: actor(req) }));
   app.delete("/api/session", (req, res) => {
+    if (localPolicy)
+      throw new DomainError(
+        409,
+        "LOCAL_OWNER_MODE",
+        "로컬 소유자 모드에서는 배포 설정을 변경하여 접근을 종료해야 합니다.",
+      );
     auth.logout(req.headers.cookie);
     res
       .clearCookie("sticker_session", { ...cookieOptions, maxAge: undefined })

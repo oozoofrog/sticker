@@ -52,7 +52,7 @@ console.table(
 );
 ```
 
-4. JSON 파일을 만든 다음 `.env`에 아래 선택적 설정을 추가하고 `docker compose up -d --force-recreate --wait sticker`로 재생성합니다. `COMPOSE_PATH_SEPARATOR`는 Windows/macOS/Linux에서 같은 파일 선택 표기를 사용하게 합니다. `AGENT_CONFIG_PATH`는 오버라이드가 컨테이너 경로로 지정하므로 기본 `.env` 값은 비워 두어도 됩니다.
+4. JSON 파일을 만든 다음 `.env`에 아래 선택적 설정을 추가하고 로컬 기본 설치는 `docker compose stop sticker` 후 `bash scripts/start.sh`로 검증·재생성합니다. 별도 비밀번호 설치만 기존 `LOCAL_OWNER_MODE=off`와 비밀번호를 유지한 원시 Compose 명령을 사용합니다. `COMPOSE_PATH_SEPARATOR`는 Windows/macOS/Linux에서 같은 파일 선택 표기를 사용하게 합니다. `AGENT_CONFIG_PATH`는 오버라이드가 컨테이너 경로로 지정하므로 기본 `.env` 값은 비워 두어도 됩니다.
 
 ```dotenv
 COMPOSE_PATH_SEPARATOR=:

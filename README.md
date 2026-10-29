@@ -38,31 +38,29 @@
 
 ## 빠른 설치 — Docker Compose
 
-요구 사항: Docker Engine 또는 Docker Desktop과 Compose v2. 기본 웹 앱과 Docker MCP에는 호스트 Node/Python, GitHub 계정이나 개인 폴더가 필요하지 않습니다. 호스트에서 직접 개발/실행하는 선택적 경로만 Node.js 24 이상을 사용합니다. [설치·이전·환경 독립성 안내](docs/INSTALL.md).
+요구 사항: Docker Server Engine 28.3.3 이상(해당 Engine을 포함한 Docker Desktop)과 Compose v2. 표준 무암호 로컬 시작은 서버 버전을 확인하며 구버전·미확인 버전에서는 시작하지 않습니다. 기본 웹 앱과 Docker MCP에는 호스트 Node/Python, GitHub 계정이나 개인 폴더가 필요하지 않습니다. 호스트에서 직접 개발/실행하는 선택적 경로만 Node.js 24 이상을 사용합니다. [설치·이전·환경 독립성 안내](docs/INSTALL.md).
 
 ```bash
 cp .env.example .env
 chmod 600 .env
-# .env를 편집해 OWNER_PASSWORD에 본인만 아는 12자 이상의 고유 비밀번호 입력
-# 특수문자가 있다면 Compose .env 문법에 맞춰 작은따옴표로 감싸세요.
-docker compose up -d --build
+bash scripts/start.sh
 docker compose logs --tail=50 sticker
 ```
 
-브라우저에서 **http://localhost:8787** 을 열고 지정한 비밀번호로 로그인합니다. 첫 실행은 비어 있습니다. 프로젝트와 첫 이슈를 만들면 시작됩니다.
+브라우저에서 **http://localhost:8787** 을 열면 비밀번호 없이 바로 사용합니다. 같은 컴퓨터의 다른 사용자·프로그램도 소유자로 접근할 수 있으므로 신뢰하는 개인 컴퓨터에서만 사용하세요. 첫 실행은 비어 있습니다. 프로젝트와 첫 이슈를 만들면 시작됩니다.
 
-- 포트는 기본적으로 **127.0.0.1에만 바인딩**됩니다. 같은 컴퓨터에서만 접속할 수 있습니다.
+- 포트는 기본적으로 **127.0.0.1에만 바인딩**됩니다. 같은 컴퓨터에서만 접속할 수 있습니다. 이 설명은 현재 컴퓨터의 로컬 Docker Engine/Desktop 컨텍스트를 전제로 합니다. 선택한 Docker context/`DOCKER_HOST`는 바꾸지 않으며, 원격 daemon을 선택했다면 loopback과 신뢰 대상은 그 Docker 호스트 기준이고 현재 브라우저의 접속을 보장하지 않습니다.
 - DB와 첨부 파일은 `sticker_data` 이름의 Compose 영속 볼륨에 함께 저장됩니다. 컨테이너를 다시 만들어도 보존됩니다.
 - `docker compose down`은 데이터를 보존합니다. **`docker compose down -v`는 데이터를 삭제합니다.**
 - `STICKER_PORT`를 바꿀 때 `APP_ORIGIN`도 같은 포트로 바꾸세요.
-- 코드 업데이트는 먼저 백업한 뒤 `docker compose up -d --build`로 적용합니다.
+- 코드 업데이트는 먼저 `bash scripts/backup.sh backups/sticker-backup.tar.gz`로 백업하고, `docker compose stop sticker`로 명시적으로 중지한 뒤 `bash scripts/start.sh`로 적용합니다.
 - 컨테이너는 비루트 `node` 사용자로 실행되며, 루트 파일시스템은 읽기 전용입니다. 기본 설치에는 호스트 폴더 마운트가 없습니다.
 - 에이전트는 선택 사항입니다. 운영자 JSON 파일을 읽을 때만 `compose.agents.yaml`을 적용합니다. 기존 `AGENT_CONFIG_PATH` 사용자는 [이전 안내](docs/INSTALL.md#선택-에이전트--mcp)를 확인하세요.
 - 새 체크아웃의 실제 Docker 검증은 `bash scripts/verify-container.sh`와 [컨테이너 CI](.github/workflows/container.yml)로 실행합니다. 검증은 전용 임시 프로젝트/볼륨만 사용합니다.
 
 ### 휴대폰 또는 다른 컴퓨터에서 쓰려면
 
-UI는 작은 화면을 지원하지만 기본 설치는 의도적으로 로컬 전용입니다. 원격 접속은 별도 네트워크/TLS 설정이 필요합니다. **인증 없는 공개 포트로 바꾸지 마세요.** SSH 터널을 쓰거나, 운영자가 관리하는 비공개 네트워크와 HTTPS 역방향 프록시를 구성한 뒤 `APP_ORIGIN`을 실제 HTTPS 주소로, `SECURE_COOKIES=true`로 설정하세요. 이 소스 배포는 해당 네트워크 변경이나 공개 배포를 수행하지 않습니다.
+UI는 작은 화면을 지원하지만 기본 설치는 의도적으로 로컬 전용입니다. 원격 접속은 로컬 기본 경로와 별개이며 `LOCAL_OWNER_MODE=off`, 고유한 `OWNER_PASSWORD` 및 별도 네트워크/TLS 설정이 필요합니다. **인증 없는 공개 포트로 바꾸지 마세요.** 운영자가 관리하는 비공개 네트워크와 HTTPS 역방향 프록시를 구성한 뒤 `APP_ORIGIN`을 실제 HTTPS 주소로, `SECURE_COOKIES=true`로 설정하세요. 이 소스 배포는 해당 네트워크 변경이나 공개 배포를 수행하지 않습니다.
 
 ## 사용 흐름
 
@@ -94,10 +92,10 @@ bash scripts/backup.sh backups/sticker-2026-10-28.tar.gz
 # 본인이 만든 신뢰할 수 있는 백업만 복원하세요.
 bash scripts/restore.sh backups/sticker-2026-10-28.tar.gz --replace-data
 # 복원 후 서비스는 정지 상태입니다. 확인 후 명시적으로 시작합니다.
-docker compose up -d
+bash scripts/start.sh
 ```
 
-복원은 경로 탈출·심볼릭 링크를 거부하고, 임시 디렉터리의 DB를 읽기 전용으로 검증한 뒤 기존 데이터를 교체합니다. 0바이트/다른 앱의 DB, 지원하지 않는 스키마 버전, 필수 테이블·컬럼 누락, `integrity_check`/`foreign_key_check` 오류, UUID 파일 키 오류, 누락되거나 크기가 다른 첨부 파일은 거부합니다. 지원하는 Sticker 스키마는 현재 버전 1입니다. 실행 중인 다른 백업/복원 작업과 동시에 사용하지 마세요. 백업에는 비공개 이슈와 파일이 있으므로 접근을 제한하고, 필요하면 별도로 암호화하세요.
+복원은 경로 탈출·심볼릭 링크를 거부하고, 임시 디렉터리의 DB를 읽기 전용으로 검증한 뒤 기존 데이터를 교체합니다. 0바이트/다른 앱의 DB, 지원하지 않는 스키마 버전, 필수 테이블·컬럼 누락, `integrity_check`/`foreign_key_check` 오류, UUID 파일 키 오류, 누락되거나 크기가 다른 첨부 파일은 거부합니다. 지원 스키마는 설치된 릴리스의 누적 마이그레이션 목록으로 검증하며, 더 새로운 스키마의 백업은 거절합니다. 실행 중인 다른 백업/복원 작업과 동시에 사용하지 마세요. 백업에는 비공개 이슈와 파일이 있으므로 접근을 제한하고, 필요하면 별도로 암호화하세요.
 
 ## 로컬 개발 / 검증
 

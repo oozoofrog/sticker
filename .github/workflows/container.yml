@@ -21,11 +21,19 @@ jobs:
       - uses: actions/checkout@d23441a48e516b6c34aea4fa41551a30e30af803 # v6
         with:
           persist-credentials: false
+      # Ephemeral GitHub-hosted daemon; no TCP API or operator host changes.
+      # https://github.com/docker/setup-docker-action/releases/tag/v5.6.0
+      # https://docs.docker.com/engine/release-notes/29/#2992
+      - name: Set up pinned Docker Engine
+        uses: docker/setup-docker-action@7ec28a010822b4626af4874f9448a4b05ac6f3e5 # v5.6.0
+        with:
+          version: "v29.9.2"
       - name: Record pinned base and actual runner/builder versions
         run: |
           bash scripts/container-toolchain.sh
           printf 'Runner: %s %s\n' "${ImageOS:-unknown}" "${ImageVersion:-unknown}"
           docker version
+          test "$(docker version --format '{{.Server.Version}}')" = "29.9.2"
           docker compose version
           docker buildx version
       - name: Fresh-checkout Docker-only end-to-end verification

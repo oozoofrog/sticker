@@ -1,4 +1,5 @@
 import { githubProviderFromEnvironment } from "./github-provider-config.js";
+import { localOwnerMode } from "./local-owner.js";
 import { readFileSync } from "node:fs";
 import { createApp } from "./app.js";
 import { agentsSchema } from "./auth.js";
@@ -12,6 +13,7 @@ const instance = createApp({
   githubProvider: githubProviderFromEnvironment(process.env),
   dataDir: process.env.DATA_DIR ?? "data",
   ownerPassword: process.env.OWNER_PASSWORD ?? "",
+  localOwnerMode: localOwnerMode(process.env.LOCAL_OWNER_MODE),
   agents: agentsSchema.parse(agentInput),
   appOrigin: process.env.APP_ORIGIN ?? `http://localhost:${String(port)}`,
   secureCookies: process.env.SECURE_COOKIES === "true" ? true : undefined,

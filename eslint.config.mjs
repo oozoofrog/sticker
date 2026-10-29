@@ -12,6 +12,8 @@ export default tseslint.config(
       "dist/**",
       "test-results/**",
       "playwright-report/**",
+      "test-results-local-owner/**",
+      "playwright-report-local-owner/**",
       "coverage/**",
     ],
   },

@@ -19,6 +19,7 @@ export OWNER_PASSWORD="fixture-only-$RANDOM-$RANDOM-$RANDOM-$RANDOM"
 export APP_ORIGIN=http://localhost:8787 SECURE_COOKIES=false AGENT_CONFIG_PATH=
 export STICKER_AGENT_TOKEN= STICKER_AGENT_CONFIG=
 export GITHUB_READ_ENABLED=false GITHUB_CREDENTIAL_CONFIG_PATH=
+export LOCAL_OWNER_MODE=off
 mcp_pid=
 compose() { docker compose --env-file /dev/null "$@"; }
 cleanup() {
@@ -57,7 +58,7 @@ docker buildx imagetools inspect --raw "$expected_image" | \
 # Launcher boundary tests use only built-in Node APIs and Bash in the image.
 docker run --rm --network none --entrypoint node \
   --mount "type=bind,source=$root,target=/verification,readonly" --workdir /verification \
-  "$STICKER_IMAGE" --test tests/container.test.mjs tests/host-tools.test.mjs tests/container-readiness.test.mjs tests/container-toolchain.test.mjs tests/container-github-isolation.test.mjs
+  "$STICKER_IMAGE" --test tests/container.test.mjs tests/host-tools.test.mjs tests/container-readiness.test.mjs tests/container-toolchain.test.mjs tests/container-github-isolation.test.mjs tests/container-local-owner-isolation.test.mjs
 # Generated only in this disposable test; never persisted in the checkout/logs.
 OWNER_PASSWORD=$(docker run --rm --network none --entrypoint node "$STICKER_IMAGE" -e 'process.stdout.write(require("node:crypto").randomBytes(32).toString("hex"))')
 export OWNER_PASSWORD
@@ -98,8 +99,9 @@ docker run --rm --network none -e STICKER_AGENT_TOKEN --entrypoint node "$STICKE
 chmod 644 "$STICKER_AGENT_CONFIG" # Contains only the disposable fixture hash.
 export COMPOSE_FILE="$root/compose.yaml:$root/compose.agents.yaml"
 compose up -d --force-recreate --wait --wait-timeout 90 sticker
+verify_mcp() {
 # Open both FIFOs read/write first so neither container blocks while opening stdin.
-mkfifo "$temporary/to-mcp" "$temporary/from-mcp"
+[[ -p "$temporary/to-mcp" ]] || mkfifo "$temporary/to-mcp" "$temporary/from-mcp"
 exec 3<>"$temporary/to-mcp" 4<>"$temporary/from-mcp"
 compose run --name "$project-mcp" --rm --no-deps -T -e STICKER_AGENT_TOKEN mcp <&3 >&4 &
 mcp_pid=$!
@@ -111,4 +113,22 @@ docker rm -f "$project-mcp" >/dev/null
 wait "$mcp_pid" 2>/dev/null || true
 mcp_pid=
 exec 3>&- 4>&-
-printf 'Container verification passed: clean build, private API, persisted SQLite/uploads, backup/restore and optional STDIO MCP.\n'
+}
+verify_mcp
+# Switch only this disposable project to an explicitly trusted deployment.
+# Reuse its discovered nondefault ephemeral port so APP_ORIGIN and publication agree.
+binding=$(compose port sticker 8787)
+local_port=${binding##*:}
+[[ "$local_port" =~ ^[0-9]+$ && "$local_port" != 8787 ]] || { echo 'Expected nondefault fixture port.' >&2; exit 1; }
+compose stop sticker
+export STICKER_PORT=$local_port APP_ORIGIN="http://127.0.0.1:$local_port" OWNER_PASSWORD=
+# Standard entry point selects local access itself, even with inherited mode off.
+# COMPOSE_DISABLE_ENV_FILE and the disposable COMPOSE_FILE remain in force.
+LOCAL_OWNER_MODE=off bash scripts/start.sh
+export LOCAL_OWNER_MODE=trusted-loopback
+# Wait for the already inspected container without recreating its configuration.
+compose up -d --no-recreate --wait --wait-timeout 90 sticker
+compose exec -T -e STICKER_AGENT_TOKEN sticker node --input-type=module - < tests/container-local-owner-smoke.mjs
+# Same real STDIO client and scoped token must remain an agent after mode switching.
+verify_mcp
+printf 'Container verification passed: clean build, private API, persisted SQLite/uploads, backup/restore, trusted loopback owner and optional STDIO MCP.\n'

@@ -1,3 +1,6 @@
+import { AccessControl } from "./features/access/AccessControl.js";
+import { accessModeSchema } from "../server/contracts/access.js";
+import { useViewResource } from "./features/views/useViewResource.js";
 import { ResourceWorkspace } from "./features/resources/ResourceWorkspace.js";
 import TemplateWorkspace from "./features/templates/TemplateWorkspace.js";
 import { GithubSettings } from "./features/github/GithubSettings.js";
@@ -35,6 +38,11 @@ export default function App() {
   const relations = useRelationSummaries(data);
   const [loading, setLoading] = useState(true);
   const [authenticated, setAuthenticated] = useState(false);
+  const access = useViewResource(
+    "/access-mode",
+    accessModeSchema,
+    authenticated,
+  );
   const [error, setError] = useState("");
   const [route, setRoute] = useState<Route>(readRoute);
   const [projectEditor, setProjectEditor] = useState<Project | "new" | null>(
@@ -340,10 +348,16 @@ export default function App() {
           onChanged={viewsChanged}
         />
         <div className="sidebar-bottom">
-          <button
+          <AccessControl
             className="account-button"
-            aria-label="로그아웃"
-            onClick={() => void logout()}
+            mode={access.value?.mode ?? null}
+            owner={data.actor.role === "owner"}
+            onRefresh={() => {
+              void access.refresh();
+            }}
+            onLogout={() => {
+              void logout();
+            }}
           >
             <span className="avatar small">나</span>
             <span>
@@ -352,7 +366,7 @@ export default function App() {
             </span>
             <span className="account-exit">로그아웃</span>
             <Icon name="logout" size={17} />
-          </button>
+          </AccessControl>
         </div>
       </aside>
       <div
@@ -389,13 +403,19 @@ export default function App() {
               <Icon name="refresh" size={16} />
             </button>
             <span className="avatar small">나</span>
-            <button
+            <AccessControl
               className="text-button mobile-logout"
-              aria-label="로그아웃"
-              onClick={() => void logout()}
+              mode={access.value?.mode ?? null}
+              owner={data.actor.role === "owner"}
+              onRefresh={() => {
+                void access.refresh();
+              }}
+              onLogout={() => {
+                void logout();
+              }}
             >
               로그아웃
-            </button>
+            </AccessControl>
           </div>
         </header>
         <main>

@@ -79,3 +79,12 @@ void test("login throttles repeated failures, including correct password during 
   assert.equal(auth.login(password, "fixture"), null);
   assert.ok(auth.login(password, "different-fixture"));
 });
+
+void test("explicit empty or malformed authorization never falls back to an owner cookie", () => {
+  const auth = new AuthManager({ ownerPassword: "fixture-owner-password" });
+  const token = auth.login("fixture-owner-password", "fixture");
+  assert.ok(token);
+  for (const header of ["", "Basic invalid", "Bearer invalid"]) {
+    assert.equal(auth.authenticate(header, `sticker_session=${token}`), null);
+  }
+});

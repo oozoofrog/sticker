@@ -20,6 +20,7 @@ const child = spawn(process.execPath, ["dist/server/index.js"], {
     DATA_DIR: directory,
     APP_ORIGIN: origin,
     OWNER_PASSWORD: password,
+    LOCAL_OWNER_MODE: "off",
     AGENT_CONFIG_PATH: "",
     GITHUB_READ_ENABLED: "false",
     GITHUB_CREDENTIAL_CONFIG_PATH: "",
