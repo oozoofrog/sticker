@@ -1,0 +1,213 @@
+// OS stay-open applet. Each handler returns promptly to Apple's event dispatcher.
+ObjC.import('Foundation');
+ObjC.import('AppKit');
+ObjC.bindFunction('exit', ['void', ['int']]);
+var activeTask = null, pendingAction = null, confirmingStop = false, shouldQuit = false;
+var window = null, statusLabel = null, target = null, statusItem = null, menu = null;
+var menuItems = [], problemAction = null, snapshot = '', lastChecked = '';
+var openAfterCurrent = false;
+var actions = ['open', 'status', 'start', 'stop', 'quit', 'confirm-stop', 'cancel-stop', 'start-open', 'hide'];
+
+function nativeMissing(value) {
+  return value === null || value === undefined || typeof value.isNil !== 'function' || value.isNil();
+}
+function readText(path) {
+  var value = $.NSString.stringWithContentsOfFileEncodingError(path, $.NSUTF8StringEncoding, null);
+  if (nativeMissing(value)) throw new Error('read');
+  var text = ObjC.unwrap(value);
+  if (typeof text !== 'string') throw new Error('read');
+  return text;
+}
+function installation() {
+  var resource = ObjC.unwrap($.NSBundle.mainBundle.resourcePath);
+  var lines = readText(resource + '/sticker-source').split('\n');
+  if (lines.length !== 6 || lines[0] !== 'sticker-access-v2' || !/^\//.test(lines[1]) || /[\r\n\t]/.test(lines[1])) throw new Error('installation');
+  if (!$.NSFileManager.defaultManager.fileExistsAtPath(lines[1] + '/scripts/sticker.sh')) throw new Error('installation');
+  if (!/^\//.test(lines[2]) || /[\r\n\t]/.test(lines[2]) || !/^[a-zA-Z0-9][a-zA-Z0-9_.-]*$/.test(lines[3]) || (lines[4] && !/^[a-z0-9][a-z0-9_-]*$/.test(lines[4]))) throw new Error('installation');
+  return { root: lines[1], bin: resource + '/bin', context: lines[3], project: lines[4] };
+}
+ObjC.registerSubclass({
+  name: 'StickerAccessTarget', superclass: 'NSObject', protocols: ['NSWindowDelegate', 'NSMenuDelegate'],
+  methods: {
+    'perform:': { types: ['void', ['id']], implementation: function (sender) {
+      requestAction(actions[Number(sender.tag)]);
+    } },
+    'menuWillOpen:': { types: ['void', ['id']], implementation: function () {
+      // Show the last observation; explicit refresh avoids blocking menu tracking.
+      render();
+    } },
+    'windowShouldClose:': { types: ['bool', ['id']], implementation: function (sender) {
+      sender.orderOut(null); return false;
+    } }
+  }
+});
+function addItem(owner, title, action) {
+  var item = $.NSMenuItem.alloc.initWithTitleActionKeyEquivalent(title, action ? 'perform:' : '', '');
+  if (action) { item.target = target; item.tag = actions.indexOf(action); }
+  else item.enabled = false;
+  owner.addItem(item);
+  return item;
+}
+function ensureMenu() {
+  if (statusItem) return;
+  target = $.StickerAccessTarget.alloc.init;
+  statusItem = $.NSStatusBar.systemStatusBar.statusItemWithLength($.NSVariableStatusItemLength);
+  statusItem.button.title = '스티커';
+  statusItem.button.setAccessibilityLabel('스티커');
+  menu = $.NSMenu.alloc.initWithTitle('스티커'); menu.autoenablesItems = false;
+  menu.delegate = target;
+  menuItems = [addItem(menu, '스티커 열기', 'open'), addItem(menu, '상태 미확인', null), addItem(menu, '새로고침', 'status'), addItem(menu, '서비스 시작', 'start')];
+  var stop = addItem(menu, '서비스 중지', null);
+  var confirmation = $.NSMenu.alloc.initWithTitle('서비스 중지'); confirmation.autoenablesItems = false;
+  // A submenu is the explicit confirmation; opening it performs no operation.
+  menuItems.push(stop, addItem(confirmation, '중지 확인', 'confirm-stop'), addItem(confirmation, '취소', 'cancel-stop'));
+  stop.submenu = confirmation;
+  menuItems.push(addItem(menu, '앱 종료', 'quit'));
+  statusItem.menu = menu;
+}
+function makeProblemButton(title, action, x) {
+  var button = $.NSButton.alloc.initWithFrame($.NSMakeRect(x, 18, 140, 32));
+  button.title = title; button.bezelStyle = 1; button.target = target;
+  button.tag = actions.indexOf(action); button.action = 'perform:';
+  window.contentView.addSubview(button); return button;
+}
+function ensureProblem() {
+  if (window) return;
+  window = $.NSWindow.alloc.initWithContentRectStyleMaskBackingDefer($.NSMakeRect(0, 0, 350, 125), 3, $.NSBackingStoreBuffered, false);
+  window.title = '스티커'; window.delegate = target;
+  statusLabel = $.NSTextField.alloc.initWithFrame($.NSMakeRect(20, 65, 310, 42));
+  statusLabel.editable = false; statusLabel.selectable = true; statusLabel.bezeled = false; statusLabel.drawsBackground = false;
+  statusLabel.cell.wraps = true; window.contentView.addSubview(statusLabel);
+  problemAction = makeProblemButton('다시 확인', 'open', 20);
+  makeProblemButton('닫기', 'hide', 190); window.center;
+}
+function hideProblem() { if (window) window.orderOut(null); }
+function showProblem() {
+  if (shouldQuit) return;
+  ensureProblem(); render(); window.makeKeyAndOrderFront(null);
+}
+function render() {
+  if (!statusItem) return;
+  var busy = !!activeTask || !!pendingAction, verb = activeTask ? activeTask.verb : pendingAction;
+  var label = shouldQuit ? '작업 후 종료' : busy ? ({ status: '상태 확인 중…', open: '스티커 열기 중…', start: '서비스 시작 중…', stop: '서비스 중지 중…' }[verb] || '작업 중…') : StickerAccess.label(snapshot).split('\n')[0];
+  statusItem.button.toolTip = label;
+  menuItems[1].title = label + (!busy && lastChecked ? ' · ' + lastChecked : '');
+  menuItems.forEach(function (item, index) { if (index !== 1) item.enabled = index === 7 || (!busy && !shouldQuit); });
+  if (statusLabel) {
+    statusLabel.stringValue = label;
+    var value = StickerAccess.parse(snapshot), canStart = value.state === 'stopped' || value.state === 'not_installed';
+    problemAction.title = canStart ? '시작하고 열기' : '다시 확인';
+    problemAction.tag = actions.indexOf(canStart ? 'start-open' : 'open');
+    problemAction.enabled = !busy && !shouldQuit;
+  }
+}
+function requestAppQuit() {
+  shouldQuit = true; pendingAction = null; confirmingStop = false; openAfterCurrent = false;
+  render();
+  if (!activeTask) $.exit(0);
+}
+function requestAction(action) {
+  if (action === 'quit') { requestAppQuit(); return; }
+  if (action === 'hide') { hideProblem(); return; }
+  if (shouldQuit) return;
+  if (activeTask || pendingAction) {
+    var verb = activeTask ? activeTask.verb : pendingAction;
+    // Never queue repeated opens, or reopen a service the user is stopping.
+    if (action === 'open' && verb !== 'open' && verb !== 'stop') openAfterCurrent = true;
+    return;
+  }
+  if (action === 'cancel-stop') confirmingStop = false;
+  else if (action === 'confirm-stop') { confirmingStop = false; openAfterCurrent = false; pendingAction = 'stop'; }
+  else if (action === 'stop') { confirmingStop = true; }
+  else if (action === 'start-open') {
+    var value = StickerAccess.parse(snapshot);
+    if (value.state !== 'stopped' && value.state !== 'not_installed') return;
+    openAfterCurrent = true; pendingAction = 'start';
+  } else if (['open', 'status', 'start'].indexOf(action) >= 0) { confirmingStop = false; pendingAction = action; }
+  render();
+}
+function operationCompleted(verb) {
+  lastChecked = new Date().toLocaleTimeString();
+  var value = StickerAccess.parse(snapshot), followOpen = openAfterCurrent;
+  openAfterCurrent = false;
+  if (shouldQuit) return;
+  if (followOpen && value.state === 'ready' && value.daemon === 'local_socket' && value.url && value.reason === 'none' && (value.action === 'none' || value.action === 'started')) pendingAction = 'open';
+  else if (verb === 'open') {
+    if (value.state === 'ready' && value.action === 'opened') hideProblem();
+    else showProblem();
+  } else if (followOpen) showProblem();
+  render();
+}
+function cleanupOperation(operation) {
+  // Called only after no child was launched or after that exact child completed.
+  try { if (operation.handle && !nativeMissing(operation.handle)) operation.handle.closeFile; }
+  finally {
+    if (operation.directory) $.NSFileManager.defaultManager.removeItemAtPathError(operation.directory, null);
+  }
+}
+function beginOperation(verb) {
+  var operation = { verb: verb, task: null, handle: null, directory: null, output: null };
+  try {
+    var config = installation(), fm = $.NSFileManager.defaultManager;
+    operation.directory = ObjC.unwrap($.NSTemporaryDirectory()) + 'sticker-access-' + ObjC.unwrap($.NSUUID.UUID.UUIDString);
+    operation.output = operation.directory + '/result';
+    if (!fm.createDirectoryAtPathWithIntermediateDirectoriesAttributesError(operation.directory, false, $({ NSFilePosixPermissions: 448 }), null)) throw new Error('temporary');
+    if (!fm.createFileAtPathContentsAttributes(operation.output, $.NSData.data, $({ NSFilePosixPermissions: 384 }))) throw new Error('temporary');
+    operation.handle = $.NSFileHandle.fileHandleForWritingAtPath(operation.output);
+    if (nativeMissing(operation.handle)) throw new Error('temporary');
+    var task = $.NSTask.alloc.init;
+    task.launchPath = '/bin/bash'; task.arguments = [config.root + '/scripts/sticker.sh', verb, '--json']; task.currentDirectoryPath = config.root;
+    var environment = $.NSProcessInfo.processInfo.environment.mutableCopy;
+    ObjC.deepUnwrap(environment.allKeys).forEach(function (key) { if (/^(DOCKER_|COMPOSE_)/.test(key)) environment.removeObjectForKey(key); });
+    environment.setObjectForKey(config.context, 'DOCKER_CONTEXT');
+    if (config.project) environment.setObjectForKey(config.project, 'COMPOSE_PROJECT_NAME');
+    environment.setObjectForKey(config.bin + ':/usr/bin:/bin:/usr/sbin:/sbin:/usr/local/bin', 'PATH');
+    task.environment = environment; task.standardInput = $.NSFileHandle.fileHandleWithNullDevice;
+    task.standardOutput = operation.handle; task.standardError = $.NSFileHandle.fileHandleWithNullDevice;
+    operation.task = task;
+    task.launch;
+    activeTask = operation;
+  } catch {
+    // A launch can fail after OS creation; keep owning a live child rather than exit over it.
+    if (operation.task && operation.task.running) activeTask = operation;
+    else { cleanupOperation(operation); snapshot = ''; }
+  }
+}
+function finishOperation(operation) {
+  try {
+    var attributes = $.NSFileManager.defaultManager.attributesOfItemAtPathError(operation.output, null);
+    if (nativeMissing(attributes)) throw new Error('read');
+    var size = attributes.objectForKey('NSFileSize');
+    if (nativeMissing(size)) throw new Error('read');
+    snapshot = Number(ObjC.unwrap(size)) <= 16384 ? readText(operation.output) : '';
+  } catch { snapshot = ''; }
+  finally { cleanupOperation(operation); }
+}
+function run() { ensureMenu(); requestAction('open'); }
+function reopen() { run(); }
+function idle() {
+  if (!activeTask && pendingAction && !shouldQuit) {
+    var verb = pendingAction; pendingAction = null; snapshot = '';
+    beginOperation(verb);
+    if (!activeTask) operationCompleted(verb);
+  }
+  if (activeTask && !activeTask.task.running) {
+    var operation = activeTask;
+    try { finishOperation(operation); }
+    catch { snapshot = ''; }
+    finally { activeTask = null; }
+    operationCompleted(operation.verb);
+  }
+  render();
+  if (shouldQuit && !activeTask) $.exit(0);
+  return 1;
+}
+function quit() {
+  requestAppQuit();
+  if (activeTask) {
+    // Tested host lifecycle cancellation. Do not claim a -128 caller reply.
+    var cancellation = new Error('Sticker operation still running');
+    cancellation.errorNumber = -128;
+    throw cancellation;
+  }
+}
