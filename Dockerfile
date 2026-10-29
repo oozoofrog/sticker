@@ -8,6 +8,7 @@ RUN npm ci
 COPY tsconfig*.json vite.config.ts index.html ./
 COPY server ./server
 COPY client ./client
+COPY packaging/agent-install ./packaging/agent-install
 RUN npm run build && npm prune --omit=dev
 
 FROM base AS runtime
@@ -16,6 +17,7 @@ WORKDIR /app
 COPY --from=build --chown=node:node /app/package.json /app/package-lock.json ./
 COPY --from=build --chown=node:node /app/node_modules ./node_modules
 COPY --from=build --chown=node:node /app/dist ./dist
+COPY --from=build --chown=node:node /app/packaging/agent-install ./packaging/agent-install
 RUN mkdir -p /app/data /app/config && chown -R node:node /app/data /app/config
 USER node
 EXPOSE 8787

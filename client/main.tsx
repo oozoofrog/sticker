@@ -3,6 +3,7 @@ import { createRoot } from "react-dom/client";
 import App from "./App.js";
 import "./styles.css";
 import "./features/mcp-settings/mcp-settings.css";
+import "./features/agent-install/agent-install.css";
 const root = document.getElementById("root");
 if (!root) throw new Error("Missing application root.");
 createRoot(root).render(

@@ -1,0 +1,61 @@
+// Concatenate candidate.js + native.jxa + this file, then explicitly invoke osascript.
+function run(argv) {
+  ObjC.import('Foundation');
+  ObjC.bindFunction('getuid', ['unsigned int', []]);
+  ObjC.bindFunction('symlink', ['int', ['char *', 'char *']]);
+  const result = {schemaVersion:1, source:'isolated-native-prototype', productWriterChanged:false};
+  const nil = o => o === null || o === undefined || (typeof o.isNil === 'function' && o.isNil());
+  const fm = $.NSFileManager.defaultManager;
+  const fail = code => { throw new Error(code); };
+  const read = path => {
+    const bytes = $.NSData.dataWithContentsOfFile(path);
+    if(nil(bytes) || Number(bytes.length)>4096)fail('fixture_read_unverified');
+    const text = $.NSString.alloc.initWithDataEncoding(bytes,$.NSUTF8StringEncoding);
+    if(nil(text))fail('fixture_read_unverified');
+    return ObjC.unwrap(text);
+  };
+  try {
+    if(argv.length!==1 || typeof argv[0]!=='string' || !argv[0].startsWith('/') || argv[0].includes('\0'))fail('fixture_required');
+    const root=argv[0];
+    if(ObjC.unwrap($(root).stringByStandardizingPath.stringByResolvingSymlinksInPath)!==root)fail('fixture_path_unverified');
+    const attrs=fm.attributesOfItemAtPathError(root,null);
+    if(nil(attrs))fail('fixture_required');
+    const info=ObjC.deepUnwrap(attrs);
+    if(info.NSFileType!=='NSFileTypeDirectory' || Number(info.NSFileOwnerAccountID)!==Number($.getuid()) || (Number(info.NSFilePosixPermissions)&511)!==448)fail('fixture_permissions');
+    const items=ObjC.deepUnwrap(fm.contentsOfDirectoryAtPathError(root,null));
+    if(!Array.isArray(items)||items.length!==1||items[0]!=='.sticker-write-probe')fail('fresh_fixture_required');
+    if(read(root+'/.sticker-write-probe')!=='synthetic-write-probe-v1\n')fail('fixture_marker');
+    const io=globalThis.StickerWriteNative();
+    result.newFile=globalThis.StickerWriteCandidate.writeNew(io,root,'probe-output.txt','synthetic 한글 bytes\n');
+    if(result.newFile.state!=='published')return JSON.stringify(result);
+    result.exactBytes=read(root+'/probe-output.txt')==='synthetic 한글 bytes\n';
+    const fileAttrs=fm.attributesOfItemAtPathError(root+'/probe-output.txt',null);
+    result.mode0600=!nil(fileAttrs)&&(Number(ObjC.deepUnwrap(fileAttrs).NSFilePosixPermissions)&511)===384;
+    result.existing=globalThis.StickerWriteCandidate.writeNew(io,root,'probe-output.txt','must not replace');
+    result.existingPreserved=read(root+'/probe-output.txt')==='synthetic 한글 bytes\n';
+    if(Number($.symlink('probe-output.txt',root+'/probe-symlink.txt'))!==0)fail('fixture_symlink_failed');
+    result.symlink=globalThis.StickerWriteCandidate.writeNew(io,root,'probe-symlink.txt','must not follow');
+    result.symlinkTargetPreserved=read(root+'/probe-output.txt')==='synthetic 한글 bytes\n';
+    if(!fm.createDirectoryAtPathWithIntermediateDirectoriesAttributesError(root+'/probe-existing-dir',false,$({NSFilePosixPermissions:448}),null))fail('fixture_directory_failed');
+    result.existingDirectory=globalThis.StickerWriteCandidate.writeNew(io,root,'probe-existing-dir','must not replace directory');
+    const directoryAttrs=fm.attributesOfItemAtPathError(root+'/probe-existing-dir',null);
+    const directoryItems=ObjC.deepUnwrap(fm.contentsOfDirectoryAtPathError(root+'/probe-existing-dir',null));
+    result.directoryPreserved=!nil(directoryAttrs)&&ObjC.deepUnwrap(directoryAttrs).NSFileType==='NSFileTypeDirectory'&&Array.isArray(directoryItems)&&directoryItems.length===0;
+    if(!fm.createDirectoryAtPathWithIntermediateDirectoriesAttributesError(root+'/probe-real-dir',false,$({NSFilePosixPermissions:448}),null))fail('fixture_directory_failed');
+    if(Number($.symlink('.',root+'/probe-parent-link'))!==0)fail('fixture_symlink_failed');
+    result.intermediateSymlink=globalThis.StickerWriteCandidate.writeNew(io,root+'/probe-parent-link/probe-real-dir','must-not-exist.txt','must not follow');
+    result.intermediateRefused=result.intermediateSymlink.error==='parent_unverified'&&!fm.fileExistsAtPath(root+'/probe-real-dir/must-not-exist.txt');
+    const after=ObjC.deepUnwrap(fm.contentsOfDirectoryAtPathError(root,null));
+    result.noTempLeft=Array.isArray(after)&&!after.some(name=>name.startsWith('.sticker-write.'));
+    const refused = (row, error) => row.published===false&&row.state==='unverified'&&row.error===error&&!row.cleanup;
+    result.passed=result.exactBytes&&result.mode0600&&result.newFile.published===true&&!result.newFile.cleanup&&
+      refused(result.existing,'destination_exists')&&result.existingPreserved&&
+      refused(result.symlink,'destination_exists')&&result.symlinkTargetPreserved&&
+      refused(result.existingDirectory,'destination_exists')&&result.directoryPreserved&&
+      refused(result.intermediateSymlink,'parent_unverified')&&result.intermediateRefused&&result.noTempLeft;
+  } catch(error) {
+    result.error=error instanceof Error&&/^[a-z_]{1,50}$/.test(error.message)?error.message:'native_bridge_unverified';
+  }
+  return JSON.stringify(result);
+}
+globalThis.run=run;

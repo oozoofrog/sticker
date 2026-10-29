@@ -64,6 +64,7 @@ OWNER_PASSWORD=$(docker run --rm --network none --entrypoint node "$STICKER_IMAG
 export OWNER_PASSWORD
 compose up -d --wait --wait-timeout 90 sticker
 compose exec -T sticker node --input-type=module - initialize < tests/container-smoke.mjs
+compose exec -T sticker node --input-type=module - < tests/container-agent-install-smoke.mjs
 compose exec -T sticker node --input-type=module - initialize < tests/container-release-smoke.mjs
 compose exec -T sticker node --input-type=module - initialize < tests/container-views-smoke.mjs
 compose exec -T sticker node --input-type=module - initialize < tests/container-templates-smoke.mjs

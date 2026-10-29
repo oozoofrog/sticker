@@ -31,6 +31,17 @@ export default tseslint.config(
     files: ["client/**/*.{js,jsx,mjs}"],
     languageOptions: { globals: globals.browser },
   },
+  {
+    files: ["packaging/agent-install/*.jxa.js"],
+    languageOptions: {
+      globals: {
+        ObjC: "readonly",
+        $: "readonly",
+        Application: "readonly",
+        Path: "readonly",
+      },
+    },
+  },
   ...tseslint.configs.strictTypeChecked.map((config) => ({
     ...config,
     files: typescriptFiles,
