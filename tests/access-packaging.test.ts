@@ -274,3 +274,88 @@ void test("Mac status supports the verified default HTTP port and rejects incons
     "unknown",
   );
 });
+
+void test("running Mac app identity handles NFC/NFD and filesystem aliases", async () => {
+  const { runInNewContext } = await import("node:vm");
+  function running(target: string, actual: string, sameIdentity: boolean) {
+    const context: {
+      run?: (args: string[]) => string;
+      ObjC: unknown;
+      $: unknown;
+    } = {
+      ObjC: { import: () => undefined, unwrap: (value: unknown) => value },
+      $: {
+        NSWorkspace: {
+          sharedWorkspace: {
+            runningApplications: {
+              count: 1,
+              objectAtIndex: () => ({ bundleURL: { path: actual } }),
+            },
+          },
+        },
+        NSFileManager: {
+          defaultManager: {
+            attributesOfItemAtPathError: (path: string) => ({
+              objectForKey: (key: string) => ({
+                stringValue:
+                  key === "NSFileSystemNumber"
+                    ? "1"
+                    : sameIdentity || path === target
+                      ? "101"
+                      : "102",
+              }),
+            }),
+          },
+        },
+      },
+    };
+    runInNewContext(
+      readFileSync(join(root, "packaging/macos/is-running.jxa"), "utf8"),
+      context,
+    );
+    assert.ok(context.run);
+    return context.run([target]);
+  }
+  assert.equal(
+    running(
+      "/tmp/한글/Sticker.app",
+      "/tmp/한글/Sticker.app".normalize("NFD"),
+      false,
+    ),
+    "running",
+  );
+  assert.equal(running("/tmp/Sticker.app", "/tmp/alias.app", true), "running");
+  assert.equal(running("/tmp/Sticker.app", "/tmp/Other.app", false), "stopped");
+});
+
+void test("Mac quit exits only its idle process and defers while a service operation is active", async () => {
+  const { runInNewContext } = await import("node:vm");
+  let exits = 0;
+  const context: {
+    quit?: () => void;
+    activeTask?: object | null;
+    shouldQuit?: boolean;
+    ObjC: unknown;
+    $: unknown;
+  } = {
+    ObjC: { import: () => undefined, bindFunction: () => undefined },
+    $: {
+      exit: (status: number) => {
+        assert.equal(status, 0);
+        exits++;
+      },
+    },
+  };
+  runInNewContext(
+    readFileSync(join(root, "packaging/macos/Sticker.jxa"), "utf8"),
+    context,
+  );
+  assert.ok(context.quit);
+  context.activeTask = {};
+  context.quit();
+  assert.equal(exits, 0);
+  assert.equal(context.shouldQuit, true);
+  context.activeTask = null;
+  context.quit();
+  assert.equal(exits, 1);
+});

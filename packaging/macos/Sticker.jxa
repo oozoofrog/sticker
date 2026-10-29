@@ -1,6 +1,7 @@
 // OS applet source, concatenated after contract.js by install-access.sh.
 ObjC.import('Foundation');
 ObjC.import('AppKit');
+ObjC.bindFunction('exit', ['void', ['int']]);
 var activeTask = null;
 var showing = false;
 var shouldQuit = false;
@@ -73,6 +74,7 @@ function invoke(root, verb) {
     if (window) window.orderOut(null);
     activeTask = null;
     fm.removeItemAtPathError(directory, null);
+    if (shouldQuit) $.exit(0);
   }
 }
 function run() {
@@ -105,4 +107,9 @@ function run() {
   } finally { showing = false; }
 }
 function reopen() { if (!showing) run(); }
-function quit() { if (!activeTask) shouldQuit = true; }
+// Quit only this idle UI process. Do not send another quit AppleEvent to ourselves.
+// Active start/stop completes and cleans up before the queued exit is honored.
+function quit() {
+  shouldQuit = true;
+  if (!activeTask) $.exit(0);
+}

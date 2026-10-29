@@ -1,10 +1,24 @@
 ObjC.import('AppKit');
+ObjC.import('Foundation');
+function fileIdentity(path) {
+  var attributes = $.NSFileManager.defaultManager.attributesOfItemAtPathError(path, null);
+  if (!attributes) return null;
+  var volume = attributes.objectForKey('NSFileSystemNumber');
+  var file = attributes.objectForKey('NSFileSystemFileNumber');
+  if (!volume || !file) return null;
+  return ObjC.unwrap(volume.stringValue) + ':' + ObjC.unwrap(file.stringValue);
+}
 function run(argv) {
   if (argv.length !== 1) return 'unknown';
+  var targetIdentity = fileIdentity(argv[0]);
+  if (!targetIdentity) return 'unknown';
+  var normalized = argv[0].normalize('NFC');
   var applications = $.NSWorkspace.sharedWorkspace.runningApplications;
   for (var i = 0; i < applications.count; i++) {
     var url = applications.objectAtIndex(i).bundleURL;
-    if (url && ObjC.unwrap(url.path) === argv[0]) return 'running';
+    if (!url) continue;
+    var path = ObjC.unwrap(url.path);
+    if (path.normalize('NFC') === normalized || fileIdentity(path) === targetIdentity) return 'running';
   }
   return 'stopped';
 }

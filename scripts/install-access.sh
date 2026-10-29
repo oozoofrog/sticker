@@ -86,7 +86,7 @@ if [[ "$mode" = --linux ]]; then
 else
   [[ "$(uname -s)" = Darwin ]] || fail 'macOS에서만 앱을 컴파일할 수 있습니다.'
   [[ "$target" = *.app ]] || fail '.app 경로를 지정하세요.'
-  [[ -x /usr/bin/osacompile && -x /usr/bin/plutil ]] || fail 'macOS 기본 컴파일 도구가 없습니다.'
+  [[ -x /usr/bin/osacompile && -x /usr/bin/plutil && -x /usr/bin/codesign ]] || fail 'macOS 기본 컴파일 도구가 없습니다.'
   if [[ -e "$target" ]]; then
     [[ -d "$target" && ! -L "$target/Contents" && ! -L "$target/Contents/Resources" ]] || fail '다른 앱은 변경하지 않습니다.'
     manifest="$target/Contents/Resources/sticker-source"
@@ -104,6 +104,10 @@ else
   printf '#!/bin/bash\nexec %q "$@"\n' "$docker_executable" > "$stage/Sticker.app/Contents/Resources/bin/docker"
   chmod 700 "$stage/Sticker.app/Contents/Resources/bin/docker"
   chmod 600 "$stage/Sticker.app/Contents/Resources/sticker-source"
+  # Resource/Info.plist changes invalidate osacompile's original ad-hoc seal.
+  # Finalize the local app only; no Developer ID, keychain, or OS policy changes.
+  /usr/bin/codesign --force --sign - --timestamp=none "$stage/Sticker.app"
+  /usr/bin/codesign --verify --deep --strict "$stage/Sticker.app"
   if [[ -e "$target" ]]; then old="$stage/previous.app"; mv -- "$target" "$old"; fi
   mv -- "$stage/Sticker.app" "$target"
   printf '%s\n' "접근 앱 설치: $target" '자동 실행하지 않았습니다. 앱 종료는 서비스 중지가 아닙니다.'

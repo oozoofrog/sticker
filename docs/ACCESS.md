@@ -10,11 +10,11 @@ Docker를 사용하는 터미널에서 **쓰기 가능한 설치 경로를 명�
 bash scripts/install-access.sh --mac "$HOME/Applications/Sticker.app"
 ```
 
-상위 폴더는 미리 준비하세요. macOS 기본 `osacompile`/JXA/Foundation으로 접근 앱을 만듭니다. Node/Python 설치는 필요하지 않습니다. 앱을 Finder에서 실행하면 Dock에 표시되고 상태·열기·새로고침·시작·중지를 선택합니다. 시작 빌드 중에는 진행 창을 유지합니다. 앱이 실행 중이면 업데이트를 거절합니다. 종료 후 같은 경로에 재설치하세요.
+상위 폴더는 미리 준비하세요. macOS 기본 `osacompile`/JXA/Foundation으로 접근 앱을 만듭니다. Node/Python 설치는 필요하지 않습니다. 앱을 Finder에서 실행하면 Dock에 표시되고 상태·열기·새로고침·시작·중지를 선택합니다. 시작 빌드 중에는 진행 창을 유지합니다. 앱이 실행 중이면 경로의 한글 정규화 형태와 파일 identity를 비교하여 업데이트를 거절합니다. 작업 중 OS 종료 요청은 작업·정리가 끝난 뒤 접근 앱만 종료합니다. 종료 후 같은 경로에 재설치하세요.
 
 - 로그인 항목, 메뉴바 상주 서비스, Dock 고정 설정, 자동 실행은 추가하지 않습니다.
 - 동일 설치의 소유 manifest·bundle ID가 있는 앱만 같은 경로에서 갱신합니다. 다른 앱과 다른 설치는 덮어쓰지 않습니다. 백업 앱은 남기지 않습니다.
-- unsigned 로컬 생성 앱입니다. OS 보안 경고를 자동 해제하거나 Gatekeeper 설정을 변경하지 않습니다.
+- Developer ID 배포 서명이 아닌 로컬 ad-hoc 서명 앱입니다. 최종 리소스 변경 후 다시 서명하고 strict 검증을 통과해야 설치합니다. OS 보안 경고를 자동 해제하거나 Gatekeeper 설정을 변경하지 않습니다.
 - 컴파일과 실제 Dock/브라우저 동작은 macOS 검증 대상입니다. Linux fixture 통과는 실제 Mac 실행 증거가 아닙니다.
 
 ## Linux desktop
