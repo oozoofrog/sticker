@@ -22,6 +22,31 @@ test("owner prepares reviewed installer without claiming local execution on desk
     exact: true,
   });
   await expect(dialog).toBeVisible();
+  for (const name of ["MCP", "Sticker 스킬", "변경 계획 확인"]) {
+    const checkbox = dialog.getByRole("checkbox", { name, exact: true });
+    const input = await checkbox.boundingBox();
+    const label = await checkbox.locator("..").locator("span").boundingBox();
+    expect(input).not.toBeNull();
+    expect(label).not.toBeNull();
+    if (!input || !label) throw new Error("Checkbox layout missing");
+    expect(input.width).toBeLessThanOrEqual(22);
+    expect(
+      Math.abs(input.y + input.height / 2 - label.y - label.height / 2),
+    ).toBeLessThanOrEqual(2);
+    expect(label.x - input.x - input.width).toBeGreaterThanOrEqual(4);
+    expect(label.x - input.x - input.width).toBeLessThanOrEqual(12);
+  }
+  await expect(dialog.getByRole("combobox", { name: "설치 대상" })).toHaveCount(
+    0,
+  );
+  await expect(
+    dialog.getByText("로컬 실행 시 선택", { exact: true }),
+  ).toBeVisible();
+  expect(
+    await dialog
+      .locator(".agent-install-targets")
+      .evaluate((element) => element.scrollWidth <= element.clientWidth),
+  ).toBe(true);
   // Skill-only preparation does not require a configured live credential or grant.
   await dialog.getByRole("checkbox", { name: "MCP", exact: true }).uncheck();
   await dialog.getByRole("checkbox", { name: "변경 계획 확인" }).check();

@@ -1,0 +1,55 @@
+.agent-install-targets {
+  display: grid;
+  grid-template-columns: repeat(2, minmax(0, 1fr));
+  gap: 12px;
+  margin: 0;
+}
+.agent-install-targets > div {
+  min-width: 0;
+  padding: 12px;
+  border: 1px solid var(--border);
+  border-radius: 10px;
+  background: var(--paper);
+}
+.agent-install-targets dt {
+  color: var(--muted);
+  font-size: 12px;
+}
+.agent-install-targets dd {
+  margin: 4px 0 0;
+  overflow-wrap: anywhere;
+}
+.agent-install-targets dd span {
+  display: block;
+  color: var(--muted);
+  font-size: 12px;
+}
+.agent-install-options {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 8px 20px;
+}
+.agent-install .agent-install-choice {
+  display: inline-flex;
+  align-items: center;
+  gap: 8px;
+  min-height: 44px;
+  width: fit-content;
+  max-width: 100%;
+  cursor: pointer;
+}
+.agent-install .agent-install-choice input {
+  width: 18px;
+  height: 18px;
+  flex: 0 0 18px;
+  margin: 0;
+}
+.agent-install-choice span {
+  min-width: 0;
+  overflow-wrap: anywhere;
+}
+@media (max-width: 480px) {
+  .agent-install-targets {
+    grid-template-columns: 1fr;
+  }
+}

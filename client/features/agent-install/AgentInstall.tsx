@@ -114,22 +114,22 @@ export function AgentInstall({
   }
   return (
     <Modal title="에이전트 설치" onClose={onClose} wide>
-      <div className="mcp-settings">
+      <div className="mcp-settings agent-install">
         <ErrorNotice message={resource.error || error} />
-        <div className="form-grid">
-          <Field label="대상">
-            <select aria-label="설치 대상" value="codex-mac" disabled>
-              <option value="codex-mac">Codex Mac</option>
-            </select>
-          </Field>
-          <Field label="설치 위치">
-            <select aria-label="설치 위치" value="user" disabled>
-              <option value="user">사용자 · 로컬 실행 시 선택</option>
-            </select>
-          </Field>
-        </div>
-        <div className="button-row">
-          <label>
+        <dl className="agent-install-targets">
+          <div>
+            <dt>대상</dt>
+            <dd>Codex Mac</dd>
+          </div>
+          <div>
+            <dt>설치 위치</dt>
+            <dd>
+              사용자 <span>로컬 실행 시 선택</span>
+            </dd>
+          </div>
+        </dl>
+        <div className="agent-install-options">
+          <label className="agent-install-choice">
             <input
               type="checkbox"
               checked={mcp}
@@ -137,10 +137,10 @@ export function AgentInstall({
                 invalidate();
                 setMcp(event.target.checked);
               }}
-            />{" "}
-            MCP
+            />
+            <span>MCP</span>
           </label>
-          <label>
+          <label className="agent-install-choice">
             <input
               type="checkbox"
               checked={skill}
@@ -148,8 +148,8 @@ export function AgentInstall({
                 invalidate();
                 setSkill(event.target.checked);
               }}
-            />{" "}
-            Sticker 스킬
+            />
+            <span>Sticker 스킬</span>
           </label>
         </div>
         {mcp && (
@@ -230,7 +230,7 @@ export function AgentInstall({
             )}
           </>
         )}
-        <label>
+        <label className="agent-install-choice">
           <input
             type="checkbox"
             checked={reviewed}
@@ -238,8 +238,8 @@ export function AgentInstall({
               setReviewed(event.target.checked);
             }}
             disabled={!catalog || pending}
-          />{" "}
-          변경 계획 확인
+          />
+          <span>변경 계획 확인</span>
         </label>
         <dl className="mcp-connection-facts">
           <div>
@@ -261,8 +261,9 @@ export function AgentInstall({
             <dd>미확인</dd>
           </div>
         </dl>
-        <div className="button-row">
+        <div className="mcp-settings-actions">
           <button
+            className="button secondary"
             onClick={() => {
               invalidate();
               void resource.refresh();
@@ -272,7 +273,7 @@ export function AgentInstall({
             새로고침
           </button>
           <button
-            className="primary"
+            className="button primary"
             disabled={
               !catalog ||
               pending ||
@@ -286,7 +287,9 @@ export function AgentInstall({
           >
             설치 파일 준비
           </button>
-          <button onClick={onClose}>닫기</button>
+          <button className="button secondary" onClick={onClose}>
+            닫기
+          </button>
         </div>
       </div>
     </Modal>
