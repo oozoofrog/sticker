@@ -32,12 +32,12 @@ function schemas() {
         },
       },
     },
-    McpServerStatusListParams: {
+    ListMcpServerStatusParams: {
       type: "object",
       properties: {
         serverName: nullable("string"),
         detail: { enum: ["toolsAndAuthOnly", "full"] },
-        limit: nullable("integer"),
+        limit: { type: ["integer", "null"], format: "uint32", minimum: 0 },
       },
     },
     SkillsListParams: { type: "object", properties: {} },
@@ -82,4 +82,18 @@ test("external schema refs switch document root for their own local definitions"
     $ref: "ConfigEdit.json",
   };
   assert.equal(globalThis.StickerInstallSchema.verify(value), true);
+});
+
+test("actual CLI uint32 limit format is bounded and unknown formats remain unsupported", () => {
+  const schema = { type: "integer", format: "uint32", minimum: 0 };
+  const accepts = (value) =>
+    globalThis.StickerInstallSchema.accepts(schema, value, {}, schema);
+  for (const value of [0, 10, 4294967295]) assert.equal(accepts(value), true);
+  for (const value of [-1, 4294967296, 0.5, "10", true])
+    assert.equal(accepts(value), false);
+  const unknown = { type: "integer", format: "unrecognized" };
+  assert.equal(
+    globalThis.StickerInstallSchema.accepts(unknown, 10, {}, unknown),
+    false,
+  );
 });

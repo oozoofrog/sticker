@@ -12,6 +12,7 @@ globalThis.StickerInstallSchema = (() => {
     "examples",
     "deprecated",
     "type",
+    "format",
     "properties",
     "required",
     "additionalProperties",
@@ -108,6 +109,14 @@ globalThis.StickerInstallSchema = (() => {
           Number.isInteger(value) &&
           types.includes("integer")
         )
+      )
+        return false;
+    }
+    if (Object.hasOwn(schema, "format")) {
+      if (schema.format !== "uint32") return false;
+      if (
+        value !== null &&
+        (!Number.isInteger(value) || value < 0 || value > 4294967295)
       )
         return false;
     }
@@ -223,7 +232,7 @@ globalThis.StickerInstallSchema = (() => {
         ],
       ],
       [
-        "McpServerStatusListParams",
+        "ListMcpServerStatusParams",
         status,
         [
           { ...status, serverName: 1 },
