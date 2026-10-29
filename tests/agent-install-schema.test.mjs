@@ -97,3 +97,41 @@ test("actual CLI uint32 limit format is bounded and unknown formats remain unsup
     false,
   );
 });
+
+test("external refs preserve exact sibling identity and reject path or URI aliases", () => {
+  for (const file of [
+    "ListMcpServerStatusParams.json",
+    "./ListMcpServerStatusParams.json",
+  ]) {
+    const value = schemas();
+    value.ConfigReadParams.properties.cwd = {
+      $ref: file + "#/properties/serverName",
+    };
+    assert.equal(globalThis.StickerInstallSchema.verify(value), true);
+  }
+  for (const file of [
+    "../v1/ListMcpServerStatusParams.json",
+    "v1/ListMcpServerStatusParams.json",
+    "/ListMcpServerStatusParams.json",
+    "https://example.invalid/ListMcpServerStatusParams.json",
+    "ListMcpServerStatusParams.json?x=1",
+    "././ListMcpServerStatusParams.json",
+  ]) {
+    const value = schemas();
+    value.ConfigReadParams.properties.cwd = {
+      $ref: file + "#/properties/serverName",
+    };
+    assert.throws(
+      () => globalThis.StickerInstallSchema.verify(value),
+      /schema_unverified/,
+    );
+  }
+  const value = schemas();
+  value.ConfigReadParams.properties.cwd = {
+    $ref: "ListMcpServerStatusParams.json#/properties/serverName#ignored",
+  };
+  assert.throws(
+    () => globalThis.StickerInstallSchema.verify(value),
+    /schema_unverified/,
+  );
+});

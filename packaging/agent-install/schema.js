@@ -47,16 +47,16 @@ globalThis.StickerInstallSchema = (() => {
     const check = (s, v = value) => accepts(s, v, schemas, root, depth + 1);
     if (schema.$ref) {
       if (typeof schema.$ref !== "string") return false;
-      const [file, pointer = ""] = schema.$ref.split("#");
-      let target = file
-        ? schemas[
-            file
-              .replace(/^\.\//, "")
-              .split("/")
-              .pop()
-              .replace(/\.json$/, "")
-          ]
-        : root;
+      const parts = schema.$ref.split("#");
+      if (parts.length > 2) return false;
+      const [file, pointer = ""] = parts;
+      // Only exact sibling documents are supported; never alias another
+      // namespace, URI or path to a selected document by its basename.
+      if (file && !/^(?:\.\/)?[A-Za-z][A-Za-z0-9_]*\.json$/.test(file))
+        return false;
+      const name = file.replace(/^\.\//, "").replace(/\.json$/, "");
+      if (file && !Object.hasOwn(schemas, name)) return false;
+      let target = file ? schemas[name] : root;
       const referenceRoot = target;
       if (pointer) {
         if (!pointer.startsWith("/")) return false;

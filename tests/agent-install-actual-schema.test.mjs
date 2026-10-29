@@ -98,3 +98,121 @@ test("actual installer preflight loads the original v2 files and resolves their 
   );
   assert.doesNotThrow(() => vm.runInContext(source.slice(start, end), sandbox));
 });
+function runGeneratedTree(entries, documents) {
+  const source = readFileSync(
+    new URL("../packaging/agent-install/installer.jxa.js", import.meta.url),
+    "utf8",
+  );
+  const start = source.indexOf("      const entries ="),
+    end = source.indexOf("      for (const args of [", start);
+  const sandbox = {
+    temporary: "/fixture-schema",
+    ObjC: { deepUnwrap: (value) => value },
+    fm: { subpathsAtPath: () => entries },
+    canonical: (p) => p,
+    text: (p) => {
+      const relative = p.slice("/fixture-schema/".length);
+      assert.ok(Object.hasOwn(documents, relative));
+      return documents[relative];
+    },
+    fail: (code) => {
+      throw new Error(code);
+    },
+  };
+  vm.createContext(sandbox);
+  vm.runInContext(
+    readFileSync(
+      new URL("../packaging/agent-install/schema.js", import.meta.url),
+      "utf8",
+    ),
+    sandbox,
+  );
+  vm.runInContext(source.slice(start, end), sandbox);
+}
+function standaloneTree() {
+  return Object.fromEntries(
+    Object.keys(files).map((name) => [
+      `v2/${name}.json`,
+      read(name).toString("utf8"),
+    ]),
+  );
+}
+function syntheticAggregate() {
+  // Synthetic aggregate shape: actual standalone definitions are moved to one
+  // shared root, so lifting a nested request definition loses its local ref root.
+  const definitions = {};
+  for (const name of Object.keys(files)) {
+    const doc = JSON.parse(read(name).toString("utf8"));
+    Object.assign(definitions, doc.definitions ?? {});
+    delete doc.definitions;
+    definitions[name] = doc;
+  }
+  return JSON.stringify({
+    $schema: "http://json-schema.org/draft-07/schema#",
+    definitions,
+  });
+}
+test("standalone document roots survive synthetic aggregate and v1 name collisions in every discovery order", () => {
+  const docs = {
+    ...standaloneTree(),
+    "synthetic-aggregate.json": syntheticAggregate(),
+    "v1/ConfigBatchWriteParams.json": JSON.stringify({ type: "boolean" }),
+  };
+  const paths = Object.keys(docs);
+  for (const entries of [
+    paths,
+    [...paths].reverse(),
+    [paths[4], ...paths.slice(0, 4), paths[5]],
+  ])
+    assert.doesNotThrow(() => runGeneratedTree(entries, docs));
+});
+test("missing or duplicate exact v2 standalone candidates fail closed instead of trusting an aggregate alias", () => {
+  const docs = {
+    ...standaloneTree(),
+    "synthetic-aggregate.json": syntheticAggregate(),
+  };
+  const paths = Object.keys(docs);
+  assert.throws(
+    () =>
+      runGeneratedTree(
+        paths.filter((p) => p !== "v2/ConfigBatchWriteParams.json"),
+        docs,
+      ),
+    /schema_unverified/,
+  );
+  assert.throws(
+    () => runGeneratedTree([...paths, "v2/ConfigBatchWriteParams.json"], docs),
+    /schema_unverified/,
+  );
+  const invalid = {
+    ...docs,
+    "v2/ConfigBatchWriteParams.json": JSON.stringify({ type: "boolean" }),
+  };
+  assert.throws(() => runGeneratedTree(paths, invalid), /schema_unverified/);
+});
+test("mismatched v2 titles and external refs beyond the supported document set are not guessed", () => {
+  const docs = standaloneTree(),
+    paths = Object.keys(docs);
+  const readDoc = JSON.parse(docs["v2/ConfigReadParams.json"]);
+  assert.throws(
+    () =>
+      runGeneratedTree(paths, {
+        ...docs,
+        "v2/ConfigReadParams.json": JSON.stringify({
+          ...readDoc,
+          title: "OtherProtocol",
+        }),
+      }),
+    /schema_unverified/,
+  );
+  readDoc.properties.cwd = { $ref: "Outside.json" };
+  const external = {
+    ...docs,
+    "v2/ConfigReadParams.json": JSON.stringify(readDoc),
+    "v2/Outside.json": JSON.stringify({ type: "string" }),
+  };
+  assert.throws(
+    () => runGeneratedTree(Object.keys(external), external),
+    /schema_unverified/,
+  );
+});

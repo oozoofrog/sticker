@@ -144,24 +144,32 @@ function run(argv) {
         fail("schema_unverified");
       const schemas = Object.create(null);
       let schemaBytes = 0;
-      for (const entry of entries) {
-        if (!entry.endsWith(".json")) continue;
+      // This installer targets the verified v2 standalone request documents.
+      // Nested aggregate definitions keep a different local $ref root and must
+      // never replace these documents. No basename or aggregate fallback.
+      for (const name of [
+        "ConfigReadParams",
+        "ConfigBatchWriteParams",
+        "ListMcpServerStatusParams",
+        "SkillsListParams",
+      ]) {
+        const entry = "v2/" + name + ".json";
+        if (entries.filter((candidate) => candidate === entry).length !== 1)
+          fail("schema_unverified");
         const file = temporary + "/" + entry;
         if (canonical(file) !== file) fail("schema_unverified");
         const source = text(file);
         schemaBytes += source.length;
         if (schemaBytes > 16 * 1024 * 1024) fail("schema_unverified");
         const value = JSON.parse(source);
-        schemas[
-          entry
-            .split("/")
-            .pop()
-            .replace(/\.json$/, "")
-        ] = value;
-        for (const field of ["definitions", "$defs"]) {
-          if (value[field] && typeof value[field] === "object")
-            Object.assign(schemas, value[field]);
-        }
+        if (
+          !value ||
+          typeof value !== "object" ||
+          Array.isArray(value) ||
+          value.title !== name
+        )
+          fail("schema_unverified");
+        schemas[name] = value;
       }
       globalThis.StickerInstallSchema.verify(schemas);
       for (const args of [
