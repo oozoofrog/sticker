@@ -39,6 +39,14 @@ test("owner prepares reviewed installer without claiming local execution on desk
       () => document.documentElement.scrollWidth <= innerWidth,
     ),
   ).toBe(true);
+  const screenshot = testInfo.outputPath(
+    "agent-install-download-requested.png",
+  );
+  await dialog.screenshot({ path: screenshot });
+  await testInfo.attach(
+    "Agent installer: download requested, local execution unverified",
+    { path: screenshot, contentType: "image/png" },
+  );
   await page.keyboard.press("Escape");
   await expect(dialog).toBeHidden();
   await expect(trigger).toBeFocused();
