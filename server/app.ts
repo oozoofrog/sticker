@@ -1,3 +1,4 @@
+import { registerAgentInstallRoutes } from "./routes/agent-install.js";
 import {
   LocalOwnerPolicy,
   localOwnerActor,
@@ -170,6 +171,7 @@ export function createApp(config: AppConfig) {
   registerHistoryRoutes(app, store.history);
   registerGithubRoutes(app, store.github);
   registerMcpSettingsRoutes(app, () => auth.directory());
+  registerAgentInstallRoutes(app, () => auth.directory());
   registerTemplateRoutes(app, store.templates);
   registerResourceRoutes(app, store.resources, files);
   registerSessionRoutes(app, store.sessions);

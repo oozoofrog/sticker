@@ -1,3 +1,4 @@
+import { AgentInstall } from "./features/agent-install/AgentInstall.js";
 import { AccessControl } from "./features/access/AccessControl.js";
 import { accessModeSchema } from "../server/contracts/access.js";
 import { useViewResource } from "./features/views/useViewResource.js";
@@ -33,6 +34,7 @@ import AgentSessions from "./features/sessions/AgentSessions.js";
 import OwnerInbox from "./features/sessions/OwnerInbox.js";
 export default function App() {
   const [mcpSettings, setMcpSettings] = useState(false);
+  const [agentInstall, setAgentInstall] = useState(false);
   const [githubProject, setGithubProject] = useState<string | null>(null);
   const [data, setData] = useState<Bootstrap | null>(null);
   const relations = useRelationSummaries(data);
@@ -228,7 +230,8 @@ export default function App() {
             versionEditor ||
             issueEditor ||
             deleteTarget ||
-            mcpSettings
+            mcpSettings ||
+            agentInstall
           )
         }
       >
@@ -293,6 +296,16 @@ export default function App() {
             <Icon name="message" />
             <span>사용자 확인함</span>
           </button>
+          {data.actor.role === "owner" && (
+            <button
+              onClick={() => {
+                setAgentInstall(true);
+              }}
+            >
+              <Icon name="agent" />
+              <span>에이전트 설치</span>
+            </button>
+          )}
           {data.actor.role === "owner" && (
             <button
               onClick={() => {
@@ -380,7 +393,8 @@ export default function App() {
             versionEditor ||
             issueEditor ||
             deleteTarget ||
-            mcpSettings
+            mcpSettings ||
+            agentInstall
           )
         }
       >
@@ -882,6 +896,14 @@ export default function App() {
           <Icon name="check" size={17} />
           {notice}
         </div>
+      )}
+      {agentInstall && data.actor.role === "owner" && (
+        <AgentInstall
+          projects={data.projects}
+          onClose={() => {
+            setAgentInstall(false);
+          }}
+        />
       )}
       {mcpSettings && data.actor.role === "owner" && (
         <McpSettings

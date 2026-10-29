@@ -30,6 +30,10 @@ test("verification waits for healthy service after backup restarts before its ne
       join(root, "tests/container-smoke.mjs"),
     );
     copyFileSync(
+      "tests/container-agent-install-smoke.mjs",
+      join(root, "tests/container-agent-install-smoke.mjs"),
+    );
+    copyFileSync(
       "tests/container-release-smoke.mjs",
       join(root, "tests/container-release-smoke.mjs"),
     );
