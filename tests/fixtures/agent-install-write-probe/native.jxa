@@ -1,0 +1,57 @@
+// Standalone test adapter. Never loaded by the product installer.
+globalThis.StickerWriteNative = function () {
+  ObjC.import('Foundation');
+  ObjC.bindFunction('open', ['int', ['char *', 'int']]); // no O_CREAT, hence no variadic mode
+  ObjC.bindFunction('mkostempsat_np', ['int', ['int', 'void *', 'int', 'int']]);
+  ObjC.bindFunction('renameatx_np', ['int', ['int', 'char *', 'int', 'char *', 'unsigned int']]);
+  ObjC.bindFunction('fsync', ['int', ['int']]);
+  ObjC.bindFunction('close', ['int', ['int']]);
+  ObjC.bindFunction('unlinkat', ['int', ['int', 'char *', 'int']]);
+  ObjC.bindFunction('__error', ['int *', []]);
+  // Darwin public fcntl.h constants. Unavailable flags/functions fail closed.
+  const DIRECTORY = 0x00100000, CLOEXEC = 0x01000000, NOFOLLOW_ANY = 0x20000000;
+  const nil = o => o === null || o === undefined || (typeof o.isNil === 'function' && o.isNil());
+  const fail = code => { throw new Error(code); };
+  const data = value => {
+    const result = $(value).dataUsingEncoding($.NSUTF8StringEncoding);
+    if (nil(result) || Number(result.length) > 2097152) fail('data_unverified');
+    return result;
+  };
+  return {
+    openParent(parent) {
+      const fd = Number($.open(parent, DIRECTORY | CLOEXEC | NOFOLLOW_ANY));
+      if (!Number.isInteger(fd) || fd < 0) fail('parent_unverified');
+      return fd;
+    },
+    createTemp(parentFd) {
+      const buffer = data('.sticker-write.XXXXXXXXXXXX\0').mutableCopy;
+      if (nil(buffer)) fail('buffer_unverified');
+      const fd = Number($.mkostempsat_np(parentFd, buffer.mutableBytes, 0, CLOEXEC));
+      if (!Number.isInteger(fd) || fd < 0) fail('temp_unverified');
+      // Once created, always return fd even if decoding fails: core owns its close.
+      let name = null;
+      try {
+        const decoded = $.NSString.alloc.initWithBytesLengthEncoding(buffer.bytes, Number(buffer.length)-1, $.NSUTF8StringEncoding);
+        if (!nil(decoded)) name = ObjC.unwrap(decoded);
+      } catch { /* unknown name must not be removed */ }
+      return {fd, name};
+    },
+    write(fd, value) {
+      const payload = data(value);
+      const handle = $.NSFileHandle.alloc.initWithFileDescriptorCloseOnDealloc(fd, false);
+      if (nil(handle)) fail('handle_unverified');
+      // The file handle does not close fd on release. It is never retained/reused.
+      if (!handle.writeDataError(payload, null) || Number(handle.offsetInFile) !== Number(payload.length)) fail('write_unverified');
+    },
+    sync(fd) { if (Number($.fsync(fd)) !== 0) fail('sync_unverified'); },
+    close(fd) { if (Number($.close(fd)) !== 0) fail('close_unverified'); },
+    publish(parentFd, temp, target) {
+      if (Number($.renameatx_np(parentFd, temp, parentFd, target, 4)) !== 0) {
+        let code;
+        try { code = Number($.__error()[0]); } catch { code = null; }
+        fail(code === 17 ? 'destination_exists' : 'publish_unverified');
+      }
+    },
+    remove(parentFd, temp) { if (Number($.unlinkat(parentFd, temp, 0)) !== 0) fail('cleanup_unverified'); },
+  };
+};
