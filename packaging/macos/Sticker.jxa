@@ -1,0 +1,108 @@
+// OS applet source, concatenated after contract.js by install-access.sh.
+ObjC.import('Foundation');
+ObjC.import('AppKit');
+var activeTask = null;
+var showing = false;
+var shouldQuit = false;
+var installation = null;
+
+function readText(path) {
+  var value = $.NSString.stringWithContentsOfFileEncodingError(path, $.NSUTF8StringEncoding, null);
+  return value ? ObjC.unwrap(value) : '';
+}
+function sourcePath() {
+  var resource = ObjC.unwrap($.NSBundle.mainBundle.resourcePath);
+  var lines = readText(resource + '/sticker-source').split('\n');
+  if (lines.length !== 6 || lines[0] !== 'sticker-access-v2' || !/^\//.test(lines[1]) || /[\r\n\t]/.test(lines[1])) throw new Error('installation');
+  if (!$.NSFileManager.defaultManager.fileExistsAtPath(lines[1] + '/scripts/sticker.sh')) throw new Error('installation');
+  if (!/^\//.test(lines[2]) || /[\r\n\t]/.test(lines[2]) || !/^[a-zA-Z0-9][a-zA-Z0-9_.-]*$/.test(lines[3]) || (lines[4] && !/^[a-z0-9][a-z0-9_-]*$/.test(lines[4]))) throw new Error('installation');
+  installation = { bin: resource + '/bin', context: lines[3], project: lines[4] };
+  return lines[1];
+}
+function progressWindow(verb) {
+  var window = $.NSWindow.alloc.initWithContentRectStyleMaskBackingDefer($.NSMakeRect(0, 0, 460, 105), 1, $.NSBackingStoreBuffered, false);
+  window.title = '스티커';
+  var label = $.NSTextField.alloc.initWithFrame($.NSMakeRect(20, 30, 420, 50));
+  label.stringValue = { status: '상태 확인 중…', open: '브라우저 열기 요청 중…', start: '서비스 시작 중…', stop: '서비스 중지 중…' }[verb];
+  label.editable = false; label.selectable = false; label.bezeled = false; label.drawsBackground = false;
+  window.contentView.addSubview(label);
+  window.center; window.makeKeyAndOrderFront(null);
+  return window;
+}
+function invoke(root, verb) {
+  if (activeTask) return '';
+  var fm = $.NSFileManager.defaultManager;
+  var directory = ObjC.unwrap($.NSTemporaryDirectory()) + 'sticker-access-' + ObjC.unwrap($.NSUUID.UUID.UUIDString);
+  var output = directory + '/result';
+  var handle = null, window = null;
+  try {
+    if (!fm.createDirectoryAtPathWithIntermediateDirectoriesAttributesError(directory, false, $({ NSFilePosixPermissions: 448 }), null)) throw new Error('temporary');
+    if (!fm.createFileAtPathContentsAttributes(output, $.NSData.data, $({ NSFilePosixPermissions: 384 }))) throw new Error('temporary');
+    handle = $.NSFileHandle.fileHandleForWritingAtPath(output);
+    var task = $.NSTask.alloc.init;
+    task.launchPath = '/bin/bash';
+    task.arguments = [root + '/scripts/sticker.sh', verb, '--json'];
+    task.currentDirectoryPath = root;
+    var environment = $.NSProcessInfo.processInfo.environment.mutableCopy;
+    var keys = ObjC.deepUnwrap(environment.allKeys);
+    keys.forEach(function (key) { if (/^(DOCKER_|COMPOSE_)/.test(key)) environment.removeObjectForKey(key); });
+    environment.setObjectForKey(installation.context, 'DOCKER_CONTEXT');
+    if (installation.project) environment.setObjectForKey(installation.project, 'COMPOSE_PROJECT_NAME');
+    environment.setObjectForKey(installation.bin + ':/usr/bin:/bin:/usr/sbin:/sbin:/usr/local/bin', 'PATH');
+    task.environment = environment;
+    task.standardInput = $.NSFileHandle.fileHandleWithNullDevice;
+    task.standardOutput = handle;
+    task.standardError = $.NSFileHandle.fileHandleWithNullDevice;
+    activeTask = task;
+    window = progressWindow(verb);
+    task.launch;
+    // Never apply a short GUI timeout to a validated start/build operation.
+    while (task.running) {
+      var event = $.NSApplication.sharedApplication.nextEventMatchingMaskUntilDateInModeDequeue($.NSEventMaskAny, $.NSDate.dateWithTimeIntervalSinceNow(0.1), $.NSDefaultRunLoopMode, true);
+      if (event) $.NSApplication.sharedApplication.sendEvent(event);
+      $.NSApplication.sharedApplication.updateWindows;
+    }
+    task.waitUntilExit;
+    handle.closeFile; handle = null;
+    var size = fm.attributesOfItemAtPathError(output, null).objectForKey('NSFileSize');
+    return Number(ObjC.unwrap(size)) <= 16384 ? readText(output) : '';
+  } catch { return ''; }
+  finally {
+    // No global process killing or service stop when this UI closes.
+    if (handle) handle.closeFile;
+    if (window) window.orderOut(null);
+    activeTask = null;
+    fm.removeItemAtPathError(directory, null);
+  }
+}
+function run() {
+  if (showing) return;
+  showing = true;
+  var app = Application.currentApplication();
+  app.includeStandardAdditions = true;
+  try {
+    var root = sourcePath();
+    var snapshot = invoke(root, 'status');
+    while (!shouldQuit) {
+      var choice = app.chooseFromList(['열기', '새로고침', '서비스 시작', '서비스 중지', '접근 앱 종료'], {
+        withTitle: '스티커', withPrompt: StickerAccess.label(snapshot), defaultItems: ['열기'],
+        okButtonName: '선택', cancelButtonName: '앱 종료', multipleSelectionsAllowed: false
+      });
+      if (!choice || choice[0] === '접근 앱 종료') break;
+      var verb = { '열기': 'open', '새로고침': 'status', '서비스 시작': 'start', '서비스 중지': 'stop' }[choice[0]];
+      if (!verb) continue;
+      if (verb === 'stop') {
+        try {
+          var confirm = app.displayDialog('스티커 서비스를 중지할까요?', { withTitle: '스티커', buttons: ['취소', '중지'], defaultButton: '취소', cancelButton: '취소' });
+          if (confirm.buttonReturned !== '중지') continue;
+        } catch { continue; }
+      }
+      snapshot = invoke(root, verb);
+    }
+  } catch (error) {
+    // Standard Additions cancellation is not a service operation.
+    if (!error || error.errorNumber !== -128) app.displayDialog('설치 경로 또는 접근 앱을 확인하세요.', { withTitle: '스티커', buttons: ['닫기'] });
+  } finally { showing = false; }
+}
+function reopen() { if (!showing) run(); }
+function quit() { if (!activeTask) shouldQuit = true; }

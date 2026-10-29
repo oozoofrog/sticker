@@ -1,0 +1,10 @@
+ObjC.import('AppKit');
+function run(argv) {
+  if (argv.length !== 1) return 'unknown';
+  var applications = $.NSWorkspace.sharedWorkspace.runningApplications;
+  for (var i = 0; i < applications.count; i++) {
+    var url = applications.objectAtIndex(i).bundleURL;
+    if (url && ObjC.unwrap(url.path) === argv[0]) return 'running';
+  }
+  return 'stopped';
+}
