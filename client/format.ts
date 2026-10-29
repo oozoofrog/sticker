@@ -60,6 +60,6 @@ export function relativeTime(value: string) {
 }
 export const versionStateNames = {
   planned: "계획 중",
-  released: "배포됨",
+  released: "출시 확정",
   archived: "보관됨",
 };

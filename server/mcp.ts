@@ -1,4 +1,5 @@
 import { registerResourceTools } from "./mcp/resources.js";
+import { registerGithubTools } from "./mcp/github.js";
 import { registerTemplateTools } from "./mcp/templates.js";
 import { templateCreateHints } from "./contracts/templates.js";
 import { registerReleaseTools } from "./mcp/releases.js";
@@ -230,6 +231,7 @@ export function createStickerMcp(apiUrl: string, token: string): McpServer {
       throw new ApiError(status, code, message);
     },
   });
+  registerGithubTools({ tool, json });
   registerTemplateTools({ tool, json });
   registerSessionTools({ tool, json });
   registerRelationTools({ tool, json });

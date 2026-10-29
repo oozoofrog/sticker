@@ -42,6 +42,10 @@ test("verification waits for healthy service after backup restarts before its ne
       join(root, "tests/container-templates-smoke.mjs"),
     );
     copyFileSync(
+      "tests/container-github-smoke.mjs",
+      join(root, "tests/container-github-smoke.mjs"),
+    );
+    copyFileSync(
       "tests/container-resources-smoke.mjs",
       join(root, "tests/container-resources-smoke.mjs"),
     );

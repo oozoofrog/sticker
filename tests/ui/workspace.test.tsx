@@ -84,7 +84,10 @@ async function fixture() {
       rmSync(dataDir, { recursive: true, force: true });
     },
     async login() {
-      await screen.findByRole("heading", { name: /생각을 붙이고/ });
+      await screen.findByRole("heading", {
+        name: "나의 작업 공간으로",
+        level: 1,
+      });
       await user.type(screen.getByLabelText("소유자 비밀번호"), password);
       await user.click(screen.getByRole("button", { name: "작업 공간 열기" }));
       await screen.findByRole("heading", { name: "내 작업 공간" });
@@ -235,7 +238,7 @@ void test("DOM + real API: wrong password, Escape focus return, version creation
     await f.click("버전 만들기");
     await screen.findByRole("heading", { name: "v1.0" });
     await f.click("v1.0 버전 편집");
-    assert.equal(screen.queryByRole("option", { name: "배포됨" }), null);
+    assert.equal(screen.queryByRole("option", { name: "출시 확정" }), null);
     await f.user.selectOptions(screen.getByLabelText("버전 상태"), "archived");
     await f.click("변경 저장");
     await screen.findByText("보관됨");
@@ -248,7 +251,7 @@ void test("DOM + real API: wrong password, Escape focus return, version creation
     await screen.findByText("출시 상태가 기록되었습니다.");
     await f.click("취소");
     await f.click("버전 목록");
-    await screen.findByText("배포됨");
+    await screen.findByText("출시 확정");
     await f.click("v1.0 버전 삭제");
     await f.click("삭제하기");
     await waitFor(() => {
@@ -261,7 +264,10 @@ void test("DOM + real API: wrong password, Escape focus return, version creation
     await screen.findByText("출처: 에이전트 자기 보고");
     assert.ok(await screen.findByText(/아직 전달된 세션이 없어요/));
     await f.click("로그아웃");
-    await screen.findByRole("heading", { name: /생각을 붙이고/ });
+    await screen.findByRole("heading", {
+      name: "나의 작업 공간으로",
+      level: 1,
+    });
   } finally {
     await f.close();
   }
@@ -1076,12 +1082,12 @@ void test("a delayed authenticated refresh cannot reopen the workspace after log
     await f.click("작업 공간 새로고침");
     await responseCaptured;
     await f.click("로그아웃");
-    await screen.findByRole("heading", { name: /생각을 붙이고/ });
+    await screen.findByRole("heading", { name: "나의 작업 공간으로" });
     await act(async () => {
       release();
       await pending;
     });
-    assert.ok(screen.getByRole("heading", { name: /생각을 붙이고/ }));
+    assert.ok(screen.getByRole("heading", { name: "나의 작업 공간으로" }));
     assert.equal(screen.queryByRole("heading", { name: "내 작업 공간" }), null);
   } finally {
     release();

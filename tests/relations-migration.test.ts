@@ -50,7 +50,7 @@ void test("v2 backups remain read-only valid; upgrade preserves sessions/issues 
     targetRevision: 1,
   });
   store.close();
-  assert.equal(validateBackup(dir).schemaVersion, 7);
+  assert.equal(validateBackup(dir).schemaVersion, 8);
   store = new Store(dir);
   try {
     assert.equal(store.relations.get(owner, a.id).children[0]?.issue.id, b.id);

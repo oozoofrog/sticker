@@ -1,3 +1,4 @@
+import { IssueGithubEvidence } from "./features/github/IssueGithubEvidence.js";
 import { IssueResources } from "./features/resources/IssueResources.js";
 import { IssueRelations } from "./features/relations/IssueRelations.js";
 import { issueDetailSchema } from "../server/response-schemas.js";
@@ -280,6 +281,11 @@ export default function IssuePanel({
                 {issue.description || "설명 없음"}
               </div>
             </section>
+            <IssueGithubEvidence
+              key={`github-${issue.id}`}
+              issue={issue}
+              canWrite={data.actor.canWrite}
+            />
             <IssueResources
               key={`resources-${issue.id}`}
               issue={issue}
