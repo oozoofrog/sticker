@@ -216,3 +216,38 @@ test("mismatched v2 titles and external refs beyond the supported document set a
     /schema_unverified/,
   );
 });
+
+test("observed Mac filenames and discovery indexes preserve standalone roots before final ClientRequest aggregate", () => {
+  // Observation-based synthetic tree, NOT the actual aggregate file bytes.
+  // Only these four indexes/names and the local ref chains were reported from
+  // Mac. Other entries/positions below are explicitly synthetic filler.
+  const entries = Array.from({ length: 310 }, (_, i) => `synthetic-${i}.json`);
+  entries[0] = "codex_app_server_protocol.v2.schemas.json";
+  entries[171] = "v2/ConfigBatchWriteParams.json";
+  entries[174] = "v2/ListMcpServerStatusParams.json";
+  entries[309] = "ClientRequest.json";
+  entries[1] = "v2/ConfigReadParams.json";
+  entries[2] = "v2/SkillsListParams.json";
+  const aggregate = syntheticAggregate();
+  const definitions = JSON.parse(aggregate).definitions;
+  assert.equal(
+    definitions.ConfigBatchWriteParams.properties.edits.items.$ref,
+    "#/definitions/ConfigEdit",
+  );
+  assert.equal(
+    definitions.ConfigEdit.properties.mergeStrategy.$ref,
+    "#/definitions/MergeStrategy",
+  );
+  assert.equal(
+    definitions.ListMcpServerStatusParams.properties.detail.anyOf[0].$ref,
+    "#/definitions/McpServerStatusDetail",
+  );
+  const docs = {
+    ...Object.fromEntries(entries.map((entry) => [entry, "{}"])),
+    ...standaloneTree(),
+    "codex_app_server_protocol.v2.schemas.json": aggregate,
+    "ClientRequest.json": aggregate,
+  };
+  assert.doesNotThrow(() => runGeneratedTree(entries, docs));
+  assert.doesNotThrow(() => runGeneratedTree([...entries].reverse(), docs));
+});
