@@ -1003,3 +1003,94 @@ void test("session pending controls precede long history, show only pending requ
     await f.close();
   }
 });
+
+for (const staleResult of ["success", "unauthenticated", "failure"] as const) {
+  void test(`a delayed ${staleResult} refresh cannot replace a newer workspace`, async () => {
+    const f = await fixture();
+    let release!: () => void;
+    const pending = new Promise<void>((resolve) => {
+      release = resolve;
+    });
+    let captured!: () => void;
+    const responseCaptured = new Promise<void>((resolve) => {
+      captured = resolve;
+    });
+    try {
+      await f.login();
+      const fetch = globalThis.fetch;
+      let delayNext = true;
+      globalThis.fetch = async (input, init) => {
+        const response = await fetch(input, init);
+        if (input === "/api/bootstrap" && delayNext) {
+          delayNext = false;
+          captured();
+          await pending;
+          if (staleResult === "unauthenticated")
+            return Response.json({}, { status: 401 });
+          if (staleResult === "failure") throw new Error("오래된 요청 실패");
+        }
+        return response;
+      };
+      await f.click("작업 공간 새로고침");
+      await responseCaptured;
+      f.instance.store.createProject(
+        {
+          id: "owner",
+          name: "나",
+          role: "owner",
+          canWrite: true,
+          projectIds: null,
+        },
+        { name: "새로 추가한 프로젝트", key: "NEW" },
+      );
+      await f.click("작업 공간 새로고침");
+      await screen.findByRole("button", { name: /^새로 추가한 프로젝트/ });
+      await act(async () => {
+        release();
+        await pending;
+      });
+      assert.ok(screen.getByRole("button", { name: /^새로 추가한 프로젝트/ }));
+      assert.equal(screen.queryByRole("alert"), null);
+    } finally {
+      release();
+      await f.close();
+    }
+  });
+}
+
+void test("a delayed authenticated refresh cannot reopen the workspace after logout", async () => {
+  const f = await fixture();
+  let release!: () => void;
+  const pending = new Promise<void>((resolve) => {
+    release = resolve;
+  });
+  let captured!: () => void;
+  const responseCaptured = new Promise<void>((resolve) => {
+    captured = resolve;
+  });
+  try {
+    await f.login();
+    const fetch = globalThis.fetch;
+    globalThis.fetch = async (input, init) => {
+      const response = await fetch(input, init);
+      if (input === "/api/bootstrap") {
+        captured();
+        await pending;
+      }
+      return response;
+    };
+    await f.click("작업 공간 새로고침");
+    await responseCaptured;
+    await f.click("로그아웃");
+    await screen.findByRole("heading", { name: "나의 작업 공간으로" });
+    await act(async () => {
+      release();
+      await pending;
+    });
+    assert.ok(screen.getByRole("heading", { name: "나의 작업 공간으로" }));
+    assert.equal(screen.queryByRole("heading", { name: "내 작업 공간" }), null);
+  } finally {
+    release();
+    await f.close();
+  }
+});
