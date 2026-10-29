@@ -155,3 +155,15 @@ Codex 설정은 사용자가 직접 `~/.codex/config.toml` 또는 선택한 프�
 - `sticker_upload_resource_file`, `sticker_read_resource_file`: 최대5 MiB의 전달받은 base64 바이트만 등록/읽습니다. 호스트 파일 경로나 URL을 읽지 않습니다. 웹/API의20 MiB 자료는 MCP 한도를 넘으면 웹 다운로드를 사용해야 합니다.
 
 모든 호출은 현재 프로젝트와 연결 이슈/세션 권한을 재확인합니다. 읽기 전용 토큰은 조회만 가능하며, 이미 지정된 지침을 에이전트가 수정/삭제할 수도 없습니다. [데이터·HTTP·불변 버전·백업 계약](RESOURCES.md).
+
+### 에이전트의 문서 작성 흐름
+
+1. `sticker_create_document`에 `projectId`, `title`, `markdown`, 새 UUID `operationId`를 전달합니다. 선택한 릴리스에 연결하려면 `versionId`도 지정합니다. 응답의 `resource.id`, `resource.revision`, `current.version`을 보관합니다.
+2. 기존 문서는 `sticker_get_resource({resourceId})`로 현재 상태·revision을 읽고, `sticker_update_document({resourceId, revision, markdown, operationId})`로 수정합니다. `title`/`versionId` 생략은 유지, `versionId: null`은 릴리스 연결 해제입니다.
+3. 작업 이슈에는 `sticker_link_resource`로 반환된 자료 ID와 정확한 `resourceVersion`을 연결하고, 실제 참조한 결과 이벤트에는 `sticker_record_resource_reference`로 같은 버전을 기록합니다. 이후 수정해도 이미 참조한 버전은 바뀌지 않습니다.
+
+문서 본문은 최대 100,000자이며 빈 본문도 허용합니다. 줄바꿈·코드·공백은 원문 그대로 저장되고 실행하지 않습니다. 읽기 전용/범위 밖 프로젝트와 소유자 지정 지침 수정은 거절합니다. 문서의 내용은 명령이나 권한 승인이 아닙니다.
+
+응답을 놓쳤다면 **같은 UUID, revision, 전체 입력**으로 재시도하세요. 동일 작업은 새 자료/버전을 만들지 않습니다. 같은 UUID로 다른 입력을 보내면 충돌합니다. 재시도 응답은 최초 작업 당시의 결과이며, 이후 수정·삭제된 현재 상태를 보증하지 않습니다. 후속 편집은 다시 조회한 현재 revision과 새 UUID를 사용하세요. 지침 지정·현재 프로젝트 접근 권한은 재확인됩니다.
+
+새 도구가 서버에서 제공돼도 기존 Codex의 `enabled_tools` 허용 목록과 실행 중 세션이 자동 갱신되지는 않습니다. 현재 연결의 허용 범위와 도구 발견 결과를 따로 확인해야 하며, 이 기능은 토큰·권한·클라이언트 설정을 자동 변경하지 않습니다.

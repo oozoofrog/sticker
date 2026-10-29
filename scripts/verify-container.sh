@@ -99,7 +99,10 @@ docker run --rm --network none -e STICKER_AGENT_TOKEN --entrypoint node "$STICKE
 chmod 644 "$STICKER_AGENT_CONFIG" # Contains only the disposable fixture hash.
 export COMPOSE_FILE="$root/compose.yaml:$root/compose.agents.yaml"
 compose up -d --force-recreate --wait --wait-timeout 90 sticker
+printf '{}\n' > "$temporary/document-state.json"
+chmod 666 "$temporary/document-state.json" # IDs only; parent directory remains private.
 verify_mcp() {
+local client_script=${1:-tests/container-mcp.mjs} phase=${2:-}
 # Open both FIFOs read/write first so neither container blocks while opening stdin.
 [[ -p "$temporary/to-mcp" ]] || mkfifo "$temporary/to-mcp" "$temporary/from-mcp"
 exec 3<>"$temporary/to-mcp" 4<>"$temporary/from-mcp"
@@ -107,14 +110,35 @@ compose run --name "$project-mcp" --rm --no-deps -T -e STICKER_AGENT_TOKEN mcp <
 mcp_pid=$!
 # The client itself needs no Docker socket, credentials, host Node or network.
 docker run --rm -i --network none --entrypoint node \
-  --mount "type=bind,source=$root/tests/container-mcp.mjs,target=/app/container-mcp.mjs,readonly" \
-  "$STICKER_IMAGE" /app/container-mcp.mjs <&4 >&3
+  --mount "type=bind,source=$root/$client_script,target=/app/container-client.mjs,readonly" \
+  --mount "type=bind,source=$temporary/document-state.json,target=/app/document-state.json" \
+  "$STICKER_IMAGE" /app/container-client.mjs "$phase" /app/document-state.json <&4 >&3
 docker rm -f "$project-mcp" >/dev/null
 wait "$mcp_pid" 2>/dev/null || true
 mcp_pid=
 exec 3>&- 4>&-
 }
 verify_mcp
+# A separate synthetic writer can author documents only in the existing fixture project.
+# Keep the original read-only principal/token intact throughout this added lifecycle.
+readonly_token=$STICKER_AGENT_TOKEN
+DOCUMENT_PROJECT_ID=$(compose exec -T -e STICKER_AGENT_TOKEN sticker node --input-type=module -e 'const response=await fetch("http://127.0.0.1:8787/api/bootstrap",{headers:{authorization:`Bearer ${process.env.STICKER_AGENT_TOKEN}`},signal:AbortSignal.timeout(15000),redirect:"error"});if(!response.ok)throw new Error("Fixture lookup failed");const projects=(await response.json()).projects.filter(p=>p.name==="Portable fixture");if(projects.length!==1||!/^[0-9a-f-]{36}$/.test(projects[0].id))throw new Error("Fixture project identity required");process.stdout.write(projects[0].id)')
+STICKER_DOCUMENT_TOKEN=$(docker run --rm --network none --entrypoint node "$STICKER_IMAGE" -e 'process.stdout.write(require("node:crypto").randomBytes(32).toString("hex"))')
+export DOCUMENT_PROJECT_ID STICKER_DOCUMENT_TOKEN
+docker run --rm --network none -e STICKER_AGENT_TOKEN -e STICKER_DOCUMENT_TOKEN -e DOCUMENT_PROJECT_ID --entrypoint node "$STICKER_IMAGE" -e 'const crypto=require("node:crypto"),hash=v=>crypto.createHash("sha256").update(v).digest("hex");if(!/^[0-9a-f-]{36}$/.test(process.env.DOCUMENT_PROJECT_ID))throw new Error("Scoped fixture ID required");process.stdout.write(JSON.stringify([{id:"container-fixture",name:"Container fixture",tokenHash:hash(process.env.STICKER_AGENT_TOKEN),projectIds:null,canWrite:false},{id:"container-document-writer",name:"Container document writer",tokenHash:hash(process.env.STICKER_DOCUMENT_TOKEN),projectIds:[process.env.DOCUMENT_PROJECT_ID],canWrite:true}]))' > "$STICKER_AGENT_CONFIG"
+compose up -d --force-recreate --wait --wait-timeout 90 sticker
+STICKER_AGENT_TOKEN=$STICKER_DOCUMENT_TOKEN verify_mcp tests/container-document-mcp.mjs initialize
+verify_mcp tests/container-document-mcp.mjs readonly
+compose up -d --force-recreate --wait --wait-timeout 90 sticker
+STICKER_AGENT_TOKEN=$STICKER_DOCUMENT_TOKEN verify_mcp tests/container-document-mcp.mjs verify
+bash scripts/backup.sh "$temporary/document-fixture.tar.gz"
+compose up -d --wait --wait-timeout 90 sticker
+STICKER_AGENT_TOKEN=$STICKER_DOCUMENT_TOKEN verify_mcp tests/container-document-mcp.mjs mutate
+bash scripts/restore.sh "$temporary/document-fixture.tar.gz" --replace-data
+compose up -d --wait --wait-timeout 90 sticker
+STICKER_AGENT_TOKEN=$STICKER_DOCUMENT_TOKEN verify_mcp tests/container-document-mcp.mjs verify
+verify_mcp tests/container-document-mcp.mjs readonly
+[[ "$STICKER_AGENT_TOKEN" == "$readonly_token" ]] || { echo 'Read-only fixture credential changed.' >&2; exit 1; }
 # Switch only this disposable project to an explicitly trusted deployment.
 # Reuse its discovered nondefault ephemeral port so APP_ORIGIN and publication agree.
 binding=$(compose port sticker 8787)

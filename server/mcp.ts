@@ -104,7 +104,7 @@ export function createStickerMcp(apiUrl: string, token: string): McpServer {
     { name: "sticker", version: "0.1.0" },
     {
       instructions:
-        "스티커는 개인 이슈 저장소입니다. 작업 실행 도구가 아닙니다. waiting은 승인 대기이며 자동 실행하지 않습니다. done은 구현 완료, closed는 소유자가 확인한 종결입니다. 상태 보고는 자기 보고이며 실행 중인 프로세스를 증명하지 않습니다. 수정 전 현재 revision을 읽고 충돌 시 다시 읽으세요.",
+        "스티커는 이슈와 기획·작업 문서를 함께 관리하는 저장소입니다. 작업 실행 도구가 아닙니다. waiting은 승인 대기이며 자동 실행하지 않습니다. done은 구현 완료, closed는 소유자가 확인한 종결입니다. 상태 보고는 자기 보고이며 실행 중인 프로세스를 증명하지 않습니다. 수정 전 현재 revision을 읽고 충돌 시 다시 읽으세요.",
     },
   );
   const scrub = (value: string) =>
