@@ -1,0 +1,125 @@
+// Diagnostic only: sequential fixture commands; never Docker or product scripts.
+ObjC.import('Foundation'); ObjC.import('AppKit'); ObjC.bindFunction('exit', ['void', ['int']]);
+var window = null, label = null, button = null, target = null;
+var pending = false, active = null, halted = false, index = 0, quitRequested = false;
+var cases = [
+  { id: 'ascii-true', cwd: 'ascii', command: 'true', clean: false },
+  { id: 'unicode-true', cwd: '한글', command: 'true', clean: false },
+  { id: 'ascii-bash', cwd: 'ascii', command: 'bash', clean: false },
+  { id: 'unicode-bash', cwd: '한글', command: 'bash', clean: false },
+  { id: 'alias-bash', cwd: 'alias', command: 'bash', clean: false },
+  { id: 'unspecified-bash', cwd: null, command: 'bash', clean: false },
+  { id: 'ascii-clean-bash', cwd: 'ascii', command: 'bash', clean: true },
+  { id: 'unicode-clean-bash', cwd: '한글', command: 'bash', clean: true }
+];
+function missing(value) { return value === null || value === undefined || typeof value.isNil !== 'function' || value.isNil(); }
+function directory() {
+  var value = $.NSString.stringWithContentsOfFileEncodingError(ObjC.unwrap($.NSBundle.mainBundle.resourcePath) + '/fixture-directory', $.NSUTF8StringEncoding, null);
+  if (missing(value)) throw new Error('fixture');
+  var path = ObjC.unwrap(value).trim();
+  if (typeof path !== 'string' || path[0] !== '/' || /[\r\n\t]/.test(path)) throw new Error('fixture');
+  return path;
+}
+function trace(event, details) {
+  var handle = $.NSFileHandle.fileHandleForWritingAtPath(directory() + '/trace.jsonl');
+  if (missing(handle)) throw new Error('trace');
+  try {
+    handle.seekToEndOfFile;
+    handle.writeData($(JSON.stringify({ at: new Date().toISOString(), event: event, details: details || {} }) + '\n').dataUsingEncoding($.NSUTF8StringEncoding));
+  } finally { handle.closeFile; }
+}
+ObjC.registerSubclass({ name: 'StickerCwdProbeTarget', superclass: 'NSObject', methods: {
+  'next:': { types: ['void', ['id']], implementation: function () { if (!active && !pending && !halted && !quitRequested && index < cases.length) pending = true; } }
+}});
+function run() {
+  if (!window) {
+    window = $.NSWindow.alloc.initWithContentRectStyleMaskBackingDefer($.NSMakeRect(0, 0, 570, 140), 1, $.NSBackingStoreBuffered, false);
+    window.title = 'Sticker cwd diagnostic';
+    label = $.NSTextField.alloc.initWithFrame($.NSMakeRect(20, 65, 530, 55));
+    label.editable = false; label.bezeled = false; label.drawsBackground = false; label.cell.wraps = true;
+    window.contentView.addSubview(label);
+    target = $.StickerCwdProbeTarget.alloc.init;
+    button = $.NSButton.alloc.initWithFrame($.NSMakeRect(20, 15, 200, 36));
+    button.title = 'Run next case'; button.target = target; button.action = 'next:';
+    window.contentView.addSubview(button); window.center;
+    trace('run-return-ready');
+  }
+  window.makeKeyAndOrderFront(null); render();
+}
+function reopen() { run(); }
+function render() {
+  if (!label) return;
+  label.stringValue = active ? active.spec.id + ' · PID ' + active.task.processIdentifier + (active.termAt ? ' · TERM sent; cleanup unconfirmed' : ' · observing') : halted ? 'Stopped · inspect trace; no further cases' : index >= cases.length ? 'Cases finished · review evidence' : 'Next: ' + cases[index].id;
+  button.enabled = !active && !pending && !halted && !quitRequested && index < cases.length;
+}
+function startCase(spec) {
+  var root = directory(), environment = $.NSProcessInfo.processInfo.environment.mutableCopy;
+  var keys = ObjC.deepUnwrap(environment.allKeys);
+  var hooks = keys.some(function (key) { return key === 'BASH_ENV' || key === 'ENV' || /^BASH_FUNC_/.test(key); });
+  if (spec.command === 'bash' && hooks && !spec.clean) { halted = true; trace('inherited-hook-present-not-executed', { caseId: spec.id }); return; }
+  if (spec.clean) keys.forEach(function (key) { if (['PWD', 'OLDPWD', 'CDPATH', 'BASH_ENV', 'ENV', 'SHELLOPTS', 'BASHOPTS', 'POSIXLY_CORRECT'].indexOf(key) >= 0 || /^BASH_FUNC_/.test(key)) environment.removeObjectForKey(key); });
+  var output = root + '/' + spec.id + '.output';
+  if (!$.NSFileManager.defaultManager.createFileAtPathContentsAttributes(output, $.NSData.data, $({ NSFilePosixPermissions: 384 }))) throw new Error('output');
+  var handle = $.NSFileHandle.fileHandleForWritingAtPath(output);
+  if (missing(handle)) throw new Error('output');
+  var task = $.NSTask.alloc.init;
+  active = { spec: spec, task: task, handle: handle, output: output, startedAt: Date.now(), termAt: null, markerSeen: false, cleanupReported: false };
+  task.launchPath = spec.command === 'true' ? '/usr/bin/true' : '/bin/bash';
+  task.arguments = spec.command === 'true' ? [] : ['--noprofile', '--norc', '-c', 'printf "STICKER_SHELL_ENTER\\n"; exec /bin/pwd -P'];
+  task.environment = environment;
+  trace('before-cwd', { caseId: spec.id, cwdVariant: spec.cwd || 'unspecified', sanitized: spec.clean });
+  if (spec.cwd) task.currentDirectoryPath = root + '/' + spec.cwd;
+  trace('after-cwd', { caseId: spec.id });
+  task.standardInput = $.NSFileHandle.fileHandleWithNullDevice;
+  task.standardOutput = handle; task.standardError = $.NSFileHandle.fileHandleWithNullDevice;
+  trace('before-launch', { caseId: spec.id });
+  task.launch;
+  trace('after-launch', { caseId: spec.id, pid: task.processIdentifier });
+}
+function observe() {
+  var operation = active;
+  if (!operation) return;
+  var attributes = $.NSFileManager.defaultManager.attributesOfItemAtPathError(operation.output, null);
+  if (!missing(attributes)) {
+    var size = attributes.objectForKey('NSFileSize');
+    if (!missing(size) && Number(ObjC.unwrap(size)) <= 4096) {
+      var value = $.NSString.stringWithContentsOfFileEncodingError(operation.output, $.NSUTF8StringEncoding, null);
+      if (!missing(value) && !operation.markerSeen && ObjC.unwrap(value).indexOf('STICKER_SHELL_ENTER\n') >= 0) {
+        operation.markerSeen = true; trace('shell-first-marker', { caseId: operation.spec.id, pid: operation.task.processIdentifier });
+      }
+    }
+  }
+  if (!operation.task.running) {
+    trace('child-exited', { caseId: operation.spec.id, pid: operation.task.processIdentifier, status: operation.task.terminationStatus, markerSeen: operation.markerSeen });
+    operation.handle.closeFile; active = null;
+    if (operation.termAt) halted = true; else index++;
+    trace('handle-closed', { caseId: operation.spec.id });
+    return;
+  }
+  if (!operation.termAt && Date.now() - operation.startedAt >= 10000) {
+    halted = true; operation.termAt = Date.now();
+    trace('timeout-term-own-child', { caseId: operation.spec.id, pid: operation.task.processIdentifier, markerSeen: operation.markerSeen });
+    operation.task.terminate;
+  } else if (operation.termAt && Date.now() - operation.termAt >= 5000 && !operation.cleanupReported) {
+    operation.cleanupReported = true;
+    trace('cleanup-unconfirmed-stop', { caseId: operation.spec.id, pid: operation.task.processIdentifier });
+  }
+}
+function idle() {
+  if (pending && !active && !halted && !quitRequested) {
+    pending = false;
+    try { startCase(cases[index]); }
+    catch {
+      halted = true; trace('launch-boundary-error', { caseId: cases[index].id });
+      if (active && !active.task.running) { active.handle.closeFile; active = null; trace('unlaunched-handle-closed'); }
+    }
+  }
+  observe(); render();
+  if (quitRequested && !active) $.exit(0);
+  return 1;
+}
+function quit() {
+  quitRequested = true; pending = false;
+  if (active) { var error = new Error('Diagnostic child cleanup unconfirmed'); error.errorNumber = -128; throw error; }
+  $.exit(0);
+}

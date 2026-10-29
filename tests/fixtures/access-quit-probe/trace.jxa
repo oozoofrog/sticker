@@ -1,0 +1,19 @@
+ObjC.import('Foundation');
+function probeDirectory() {
+  var path = ObjC.unwrap($.NSBundle.mainBundle.resourcePath) + '/probe-directory';
+  var value = $.NSString.stringWithContentsOfFileEncodingError(path, $.NSUTF8StringEncoding, null);
+  if (value === undefined || value === null || value.isNil()) throw new Error('probe directory missing');
+  var directory = ObjC.unwrap(value).trim();
+  if (typeof directory !== 'string' || directory[0] !== '/' || /[\r\n\t]/.test(directory)) throw new Error('invalid probe directory');
+  return directory;
+}
+function trace(event) {
+  var directory = probeDirectory();
+  var path = directory + '/trace.log';
+  var handle = $.NSFileHandle.fileHandleForWritingAtPath(path);
+  if (handle === undefined || handle === null || handle.isNil()) throw new Error('trace file missing');
+  try {
+    handle.seekToEndOfFile;
+    handle.writeData($(new Date().toISOString() + ' ' + event + '\n').dataUsingEncoding($.NSUTF8StringEncoding));
+  } finally { handle.closeFile; }
+}

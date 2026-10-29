@@ -1,5 +1,7 @@
 import test from "node:test";
 import assert from "node:assert/strict";
+import { readFileSync } from "node:fs";
+import vm from "node:vm";
 import "../packaging/agent-install/core.js";
 import "../packaging/agent-install/flow.js";
 const selection = {
@@ -230,4 +232,87 @@ test("partial plugin failure keeps phase evidence and does not roll back MCP or 
     1,
   );
   assert.equal(f.closed, 1);
+});
+
+function actualConfirm(displayDialog) {
+  const source = readFileSync(
+    new URL("../packaging/agent-install/installer.jxa.js", import.meta.url),
+    "utf8",
+  );
+  const start = source.indexOf("        confirm(plan) {"),
+    end = source.indexOf("        installPlugin(plan)", start);
+  return vm.runInNewContext("({" + source.slice(start, end) + "}).confirm", {
+    app: { displayDialog },
+    root: "/fixture/plugin",
+  });
+}
+test("actual JXA confirmation cancellation becomes a no-write cancelled receipt, not verification failure", () => {
+  const f = fixture();
+  f.io.confirm = actualConfirm(() => {
+    throw Object.assign(new Error("User canceled."), { errorNumber: -128 });
+  });
+  const result = globalThis.StickerInstallFlow.run(f.io, selection, manifest);
+  assert.equal(result.cancelled, true);
+  assert.equal(result.error, undefined);
+  assert.equal(
+    f.calls.some((c) => c.method === "config/batchWrite"),
+    false,
+  );
+  assert.equal(f.connects, 1);
+  assert.equal(f.closed, 1);
+});
+test("confirmation failures and cancelled cleanup uncertainty are not hidden", () => {
+  for (const error of [
+    Object.assign(new Error("Other failure."), { errorNumber: -1708 }),
+    new Error("User canceled."),
+  ]) {
+    const f = fixture();
+    f.io.confirm = actualConfirm(() => {
+      throw error;
+    });
+    const result = globalThis.StickerInstallFlow.run(f.io, selection, manifest);
+    assert.equal(result.cancelled, undefined);
+    assert.equal(result.error, "verification_failed");
+  }
+  const f = fixture();
+  f.io.confirm = actualConfirm(() => {
+    throw Object.assign(new Error("User canceled."), { errorNumber: -128 });
+  });
+  const connect = f.io.connect;
+  f.io.connect = () => ({
+    ...connect(),
+    close() {
+      throw new Error("cleanup");
+    },
+  });
+  const result = globalThis.StickerInstallFlow.run(f.io, selection, manifest);
+  assert.equal(result.cancelled, true);
+  assert.equal(result.cleanup, "unverified");
+  assert.equal(result.error, "cleanup_unverified");
+});
+
+test("actual cancelled result presentation stays distinct and retains cleanup uncertainty", () => {
+  const source = readFileSync(
+    new URL("../packaging/agent-install/installer.jxa.js", import.meta.url),
+    "utf8",
+  );
+  const start = source.indexOf("    const summary ="),
+    end = source.indexOf("    return JSON.stringify(receipt);", start);
+  for (const receipt of [
+    { cancelled: true },
+    { cancelled: true, error: "cleanup_unverified" },
+  ]) {
+    let shown;
+    vm.runInNewContext(source.slice(start, end), {
+      receipt,
+      app: {
+        displayDialog(text) {
+          shown = text;
+        },
+      },
+    });
+    assert.ok(shown.startsWith("취소됨 · 변경 적용 안 함"));
+    assert.equal(shown.includes("cleanup_unverified"), Boolean(receipt.error));
+    assert.ok(!shown.includes("verification_failed"));
+  }
 });

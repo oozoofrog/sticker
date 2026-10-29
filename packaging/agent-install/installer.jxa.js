@@ -348,17 +348,24 @@ function run(argv) {
           const skillPlan = plan.skill
             ? `스킬: sticker-workflow 1.0.0\n${root}\n명시 호출\n`
             : "";
-          return (
-            app.displayDialog(
-              mcp + skillPlan + "API 권한·선택 에이전트 일치: 미확인",
-              {
-                withTitle: "Sticker 변경 확인",
-                buttons: ["취소", "적용"],
-                defaultButton: "취소",
-                cancelButton: "취소",
-              },
-            ).buttonReturned === "적용"
-          );
+          try {
+            return (
+              app.displayDialog(
+                mcp + skillPlan + "API 권한·선택 에이전트 일치: 미확인",
+                {
+                  withTitle: "Sticker 변경 확인",
+                  buttons: ["취소", "적용"],
+                  defaultButton: "취소",
+                  cancelButton: "취소",
+                },
+              ).buttonReturned === "적용"
+            );
+          } catch (error) {
+            // Standard Additions cancelButton raises userCanceledErr. Only
+            // this pre-apply confirmation maps that exact code to cancellation.
+            if (error?.errorNumber === -128) return false;
+            throw error;
+          }
         },
         installPlugin(plan) {
           checkOwnedRoot();
@@ -420,9 +427,11 @@ function run(argv) {
       selection,
       manifest,
     );
-    const summary =
-      `MCP: ${receipt.mcp}\n스킬: ${receipt.skill}\nAPI 권한·에이전트 일치·기존 앱 새로고침: 미확인` +
-      (receipt.error ? `\n확인 실패: ${receipt.error}` : "");
+    const summary = receipt.cancelled
+      ? "취소됨 · 변경 적용 안 함" +
+        (receipt.error ? `\n확인 실패: ${receipt.error}` : "")
+      : `MCP: ${receipt.mcp}\n스킬: ${receipt.skill}\nAPI 권한·에이전트 일치·기존 앱 새로고침: 미확인` +
+        (receipt.error ? `\n확인 실패: ${receipt.error}` : "");
     app.displayDialog(summary, {
       withTitle: "Sticker 로컬 검증",
       buttons: ["닫기"],
