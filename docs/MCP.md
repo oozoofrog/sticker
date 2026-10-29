@@ -4,6 +4,14 @@
 
 SDK API와 STDIO 방식은 [공식 v1 서버 문서](https://ts.sdk.modelcontextprotocol.io/server)를 기준으로 구현했으며 실제 SDK 클라이언트로 초기화·도구 목록·도구 호출을 테스트합니다. 아래 Codex 항목은 [공식 MCP 설정 문서](https://learn.chatgpt.com/docs/extend/mcp?surface=cli)를 참고했습니다. 문서 확인일: 2026-10-28. 설정은 운영자가 직접 적용하는 예시이며 자동 변경하지 않습니다.
 
+## 앱의 MCP 연결 설정
+
+소유자로 로그인한 뒤 작업 공간 메뉴의 **MCP 연결**을 엽니다. 현재 서버가 불러온 에이전트별 읽기/쓰기 권한과 프로젝트 범위를 확인하고, 설치한 소스 루트의 절대 경로를 입력해 **Codex 설정 복사**를 사용할 수 있습니다. 경로 존재·Docker 실행·Codex 연결 여부를 브라우저에서 검사하지 않으며, 상대 경로·제어 문자·잘못된 Unicode는 복사 전에 거부합니다. 경로의 공백·따옴표·역슬래시는 TOML 문자열로 이스케이프합니다. 클립보드를 사용할 수 없으면 읽기 전용 설정 출력을 선택해 직접 복사할 수 있습니다.
+
+`서버 자격증명: 설정됨`은 실행 중인 서버에 에이전트 해시 설정이 있다는 뜻이지 토큰 일치나 Codex 연결 성공이 아닙니다. `설정 복사됨`도 파일 적용을 의미하지 않습니다. `Codex 연결: 확인 안 됨`, `설정 적용: 수동`, `토큰 환경변수 필요` 상태를 별도로 유지합니다. 복사본에는 토큰 원문/해시가 없고 `env_vars = ["STICKER_AGENT_TOKEN"]` 참조만 있습니다. 이 항목은 **이미 Codex 실행 환경에 있는 변수**를 전달할 뿐, 변수를 생성하거나 GUI로 실행한 Mac 앱의 환경 상속을 보장하지 않습니다. 실제 Codex 설정 파일 적용과 토큰 전달·연결 확인은 운영자가 해당 실행 환경에서 별도로 수행합니다.
+
+권장 읽기 전용 표시가 기존 쓰기 권한을 변경하지는 않습니다. 모든 프로젝트(`null`), 접근 없음(`[]`), 명시적 ID 목록은 서로 다르며 삭제된 프로젝트 ID는 사용 불가로 남습니다. 앱은 자격증명을 생성하거나 에이전트/Codex 설정 파일을 수정하지 않습니다. 아래 운영 절차와 Docker 권한 주의 사항을 함께 확인하세요.
+
 ## 1. 운영자가 직접 에이전트 자격증명 구성
 
 1. 비밀번호 관리자 등에서 충분히 무작위인 **32바이트 이상의 토큰**을 직접 만드세요. 다른 서비스 토큰을 재사용하지 마세요. 이 저장소는 실사용 토큰을 포함하지 않습니다.
@@ -44,7 +52,7 @@ console.table(
 );
 ```
 
-4. JSON 파일을 만든 다음 `.env`에 아래 선택적 설정을 추가하고 `docker compose up -d --force-recreate --wait sticker`로 재생성합니다. `COMPOSE_PATH_SEPARATOR`는 Windows/macOS/Linux에서 같은 파일 선택 표기를 사용하게 합니다. `AGENT_CONFIG_PATH`는 오버라이드가 컨테이너 경로로 지정하므로 기본 `.env` 값은 비워 두어도 됩니다.
+4. JSON 파일을 만든 다음 `.env`에 아래 선택적 설정을 추가하고 로컬 기본 설치는 `docker compose stop sticker` 후 `bash scripts/start.sh`로 검증·재생성합니다. 별도 비밀번호 설치만 기존 `LOCAL_OWNER_MODE=off`와 비밀번호를 유지한 원시 Compose 명령을 사용합니다. `COMPOSE_PATH_SEPARATOR`는 Windows/macOS/Linux에서 같은 파일 선택 표기를 사용하게 합니다. `AGENT_CONFIG_PATH`는 오버라이드가 컨테이너 경로로 지정하므로 기본 `.env` 값은 비워 두어도 됩니다.
 
 ```dotenv
 COMPOSE_PATH_SEPARATOR=:
@@ -132,6 +140,10 @@ Codex 설정은 사용자가 직접 `~/.codex/config.toml` 또는 선택한 프�
 ## 프로젝트 이슈 템플릿 (schema 6)
 
 `sticker_list_templates`, `sticker_get_template`, `sticker_preview_template`은 현재 범위의 정의를 읽습니다. `sticker_create_issue`의 `templateId`, 현재 `templateVersion`, `templateValues`, UUID `operationId`로 같은 필수 값 검증을 거쳐 생성합니다. 템플릿 관리/실행/승인 도구는 없습니다. [정확한 생성 및 재시도 계약](ISSUE-TEMPLATES.md).
+
+### GitHub 근거 (읽기 전용)
+
+`sticker_get_github_evidence({issueId})`는 이슈와 같은 프로젝트 권한으로 저장된 PR/커밋·CI 근거를 읽습니다. 조회 자체는 GitHub 네트워크 요청을 하지 않으며 쓰기·병합·CI 실행 권한이 없습니다. [연결 및 상태 규칙](GITHUB-EVIDENCE.md).
 
 ## 프로젝트·버전 공통 자료 (schema7)
 

@@ -1,3 +1,4 @@
+import { historyDetailSchema } from "./contracts/history.js";
 /** Runtime validation for values crossing JSON and SQLite boundaries. */
 import { z } from "zod";
 import { STATUSES } from "./types.js";
@@ -123,3 +124,13 @@ export {
   templateAssigneeSchema,
   templatePreviewSchema,
 } from "./contracts/templates.js";
+
+export {
+  historyListSchema,
+  historySummarySchema,
+  historyDetailSchema,
+  restorePreviewSchema,
+} from "./contracts/history.js";
+export const restoreResultSchema = z
+  .object({ issue: issueSchema, change: historyDetailSchema })
+  .strict();

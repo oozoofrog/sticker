@@ -6,7 +6,11 @@ import {
 } from "./local-owner.js";
 import { registerResourceRoutes } from "./routes/resources.js";
 import { FileStorage } from "./file-storage.js";
+import { registerHistoryRoutes } from "./routes/history.js";
+import { registerGithubRoutes } from "./routes/github.js";
+import type { GithubProvider } from "./features/github.js";
 import { registerTemplateRoutes } from "./routes/templates.js";
+import { registerMcpSettingsRoutes } from "./routes/mcp-settings.js";
 import express, { type ErrorRequestHandler, type Request } from "express";
 import multer from "multer";
 import { mkdirSync, existsSync, unlinkSync } from "node:fs";
@@ -20,6 +24,7 @@ import { registerSessionRoutes } from "./routes/sessions.js";
 import type { Actor } from "./types.js";
 export interface AppConfig {
   dataDir: string;
+  githubProvider?: GithubProvider;
   ownerPassword: string;
   localOwnerMode?: LocalOwnerMode;
   agents?: AgentConfig[];
@@ -55,6 +60,7 @@ export function createApp(config: AppConfig) {
       Date.now,
       appOrigin.origin,
       auth.directory(),
+      config.githubProvider,
     ),
     files = new FileStorage(dataDir),
     app = express();
@@ -161,6 +167,9 @@ export function createApp(config: AppConfig) {
       .status(204)
       .end();
   });
+  registerHistoryRoutes(app, store.history);
+  registerGithubRoutes(app, store.github);
+  registerMcpSettingsRoutes(app, () => auth.directory());
   registerTemplateRoutes(app, store.templates);
   registerResourceRoutes(app, store.resources, files);
   registerSessionRoutes(app, store.sessions);

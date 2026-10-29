@@ -76,6 +76,51 @@ void test("trusted deployment grants owner without password but cannot upgrade i
       canWrite: true,
       projectIds: null,
     });
+    // Integration with the owner-only MCP settings surface: deployment owner
+    // access does not promote a bearer agent or disclose its credential.
+    const settings = await call("/mcp/settings");
+    assert.equal(settings.status, 200);
+    const settingsText = await settings.text();
+    assert.deepEqual(JSON.parse(settingsText), {
+      transport: "stdio",
+      application: "manual",
+      verification: "unknown",
+      tokenEnvironmentVariable: "STICKER_AGENT_TOKEN",
+      agents: [
+        { id: "fixture", name: "fixture", canWrite: false, projectIds: [] },
+      ],
+    });
+    assert.ok(!settingsText.includes("fixture-agent-token"));
+    assert.ok(!settingsText.includes("tokenHash"));
+    assert.ok(
+      !settingsText.includes(
+        createHash("sha256").update("fixture-agent-token").digest("hex"),
+      ),
+    );
+    assert.equal(
+      (
+        await call("/mcp/settings", "GET", {
+          authorization: "Bearer fixture-agent-token",
+        })
+      ).status,
+      403,
+    );
+    assert.equal(
+      (
+        await call("/mcp/settings", "GET", {
+          authorization: "",
+        })
+      ).status,
+      401,
+    );
+    assert.equal(
+      (
+        await call("/mcp/settings", "GET", {
+          origin: "http://evil.test",
+        })
+      ).status,
+      403,
+    );
     assert.equal(
       (await call("/bootstrap", "GET", { authorization: "Bearer invalid" }))
         .status,

@@ -1,3 +1,7 @@
+import { HistoryService } from "./features/history.js";
+import type { IssueMutationMetadata } from "./store-context.js";
+import type { IssueFieldPatch } from "./contracts/history.js";
+import { GithubService, type GithubProvider } from "./features/github.js";
 import {
   projectSchema,
   versionSchema,
@@ -203,6 +207,8 @@ function reportRow(row: Row): AgentReport {
 /** All authorization and business rules shared by HTTP and MCP live here. */
 export class Store {
   private context: StoreContext;
+  readonly history: HistoryService;
+  readonly github: GithubService;
   readonly resources: ResourceService;
   readonly templates: TemplateService;
   readonly sessions: SessionService;
@@ -225,9 +231,28 @@ export class Store {
         projectIds: null,
       },
     ],
+    githubProvider: GithubProvider = { enabled: false },
   ) {
     this.context = new StoreContext(dataDir, clock);
+    this.history = new HistoryService(
+      this.context,
+      (actor, id, input, metadata) =>
+        this.patchIssue(actor, id, input, metadata),
+      (projectId, patch) => {
+        this.versionsBelong(projectId, patch);
+      },
+    );
+    this.context.onIssueMutation = (
+      actor,
+      before,
+      after,
+      activityId,
+      sourceChangeId,
+    ) => {
+      this.history.record(actor, before, after, activityId, sourceChangeId);
+    };
     this.resources = new ResourceService(this.context);
+    this.github = new GithubService(this.context, githubProvider);
     this.templates = new TemplateService(this.context, actors);
     this.sessions = new SessionService(this.context);
     this.relations = new RelationService(this.context);
@@ -235,7 +260,11 @@ export class Store {
     this.releases = new ReleaseService(
       this.context,
       this.relations,
-      (actor, id, input) => this.patchIssue(actor, id, input),
+      (actor, id, input) =>
+        this.patchIssue(actor, id, input, {
+          action: "carryover",
+          detail: "목표 버전 이월",
+        }),
       origin,
     );
   }
@@ -497,24 +526,18 @@ export class Store {
         )
         .all(versionId, versionId, versionId);
       for (const row of affected) {
-        this.writableIssue(actor, textColumn(row, "id"));
-        const change: Record<string, SQLInputValue> = {
-          revision: Number(row.revision) + 1,
-          updatedAt: now(),
-        };
+        const before = this.writableIssue(actor, textColumn(row, "id"));
+        const change: IssueFieldPatch = {};
         for (const key of [
           "targetVersionId",
           "foundVersionId",
           "fixedVersionId",
-        ])
+        ] as const)
           if (row[key] === versionId) change[key] = null;
-        this.update("issues", textColumn(row, "id"), change);
-        this.activity(
-          actor,
-          textColumn(row, "id"),
-          "version_removed",
-          `버전 삭제: ${textColumn(v, "name")}`,
-        );
+        this.context.changeIssue(actor, before, change, {
+          action: "version_removed",
+          detail: `버전 삭제: ${textColumn(v, "name")}`,
+        });
       }
       this.db.prepare("DELETE FROM versions WHERE id=?").run(versionId);
     });
@@ -637,7 +660,10 @@ export class Store {
       this.db
         .prepare("UPDATE projects SET nextIssue=nextIssue+1 WHERE id=?")
         .run(p.id);
-      this.activity(actor, issue.id, "created", "이슈 생성");
+      this.context.issueActivity(actor, null, issue, {
+        action: "created",
+        detail: "이슈 생성",
+      });
       if (envelope.operationId)
         this.context.insert("issue_creation_operations", {
           actorId: actor.id,
@@ -651,7 +677,12 @@ export class Store {
   updateIssue(actor: Actor, issueId: string, input: unknown): Issue {
     return this.tx(() => this.patchIssue(actor, issueId, input));
   }
-  private patchIssue(actor: Actor, issueId: string, input: unknown): Issue {
+  private patchIssue(
+    actor: Actor,
+    issueId: string,
+    input: unknown,
+    metadata?: IssueMutationMetadata,
+  ): Issue {
     this.write(actor);
     if (
       !input ||
@@ -680,23 +711,17 @@ export class Store {
         "소유자만 이슈를 종료할 수 있습니다.",
       );
     this.versionsBelong(current.projectId, data);
-    const { labels, ...fields } = data;
-    const changes: Record<string, SQLInputValue> = {
-      ...fields,
-      revision: revision + 1,
-      updatedAt: now(),
-      ...(labels ? { labels: JSON.stringify(labels) } : {}),
-    };
-    this.update("issues", issueId, changes);
-    this.activity(
+    return this.context.changeIssue(
       actor,
-      issueId,
-      "updated",
-      Object.keys(data).length
-        ? `변경: ${Object.keys(data).join(", ")}`
-        : "이슈 확인",
+      current,
+      data,
+      metadata ?? {
+        action: "updated",
+        detail: Object.keys(data).length
+          ? `변경: ${Object.keys(data).join(", ")}`
+          : "이슈 확인",
+      },
     );
-    return this.issue(actor, issueId);
   }
   deleteIssue(actor: Actor, issueId: string): void {
     this.owner(actor);

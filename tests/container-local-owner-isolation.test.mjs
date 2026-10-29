@@ -59,3 +59,16 @@ test("trusted fixture discovers the published port with the service and private 
   const script = readFileSync("scripts/verify-container.sh", "utf8");
   assert.match(script, /binding=\$\(compose port sticker 8787\)/);
 });
+
+test("trusted lifecycle exercises the default launcher rather than opting in before startup", () => {
+  const script = readFileSync("scripts/verify-container.sh", "utf8");
+  assert.match(script, /LOCAL_OWNER_MODE=off bash scripts\/start\.sh/);
+  assert.match(
+    script,
+    /export LOCAL_OWNER_MODE=trusted-loopback\n[^\n]*\ncompose up -d --no-recreate --wait --wait-timeout 90 sticker/,
+  );
+  assert.ok(
+    script.indexOf("LOCAL_OWNER_MODE=off bash scripts/start.sh") <
+      script.indexOf("export LOCAL_OWNER_MODE=trusted-loopback"),
+  );
+});

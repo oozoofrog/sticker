@@ -1,3 +1,4 @@
+import { validateHistory } from "./history-validation.js";
 import { validateResourceVersionFiles } from "./resource-files.js";
 import {
   issueTemplateSchema,
@@ -126,6 +127,7 @@ export function validateBackup(stageDir: string): {
       )
         throw new Error("Invalid template provenance in backup.");
     }
+    if (version >= 9) validateHistory(db);
     const attachments = db
       .prepare("SELECT storageKey,size FROM attachments WHERE kind='file'")
       .all();

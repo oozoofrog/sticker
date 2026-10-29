@@ -237,7 +237,7 @@ const throughV6 = {
     issue_creation_operations: ["actorId", "operationId", "payload", "issueId"],
   },
 } as const;
-export const schemaManifests = {
+const throughV7 = {
   ...throughV6,
   7: {
     ...throughV6[6],
@@ -308,6 +308,67 @@ export const schemaManifests = {
     ],
   },
 } as const;
+const throughV8 = {
+  ...throughV7,
+  8: {
+    ...throughV7[7],
+    github_connections: [
+      "projectId",
+      "repositoryOwner",
+      "repositoryName",
+      "mode",
+      "credentialRef",
+      "connected",
+      "revision",
+      "lastVerifiedAt",
+      "lastErrorCode",
+    ],
+    github_evidence: [
+      "id",
+      "issueId",
+      "projectId",
+      "url",
+      "kind",
+      "repositoryOwner",
+      "repositoryName",
+      "number",
+      "revision",
+      "headSha",
+      "snapshot",
+      "checkedAt",
+      "lastAttemptAt",
+      "errorCode",
+      "createdBy",
+      "createdAt",
+    ],
+  },
+} as const;
+export const schemaManifests = {
+  ...throughV8,
+  9: {
+    ...throughV8[8],
+    issue_changes: [
+      "id",
+      "issueId",
+      "revisionBefore",
+      "revisionAfter",
+      "authorId",
+      "authorName",
+      "createdAt",
+      "action",
+      "sourceChangeId",
+      "unavailableReason",
+    ],
+    issue_field_changes: ["changeId", "field", "beforeJson", "afterJson"],
+    issue_restore_operations: [
+      "actorId",
+      "operationId",
+      "issueId",
+      "payload",
+      "changeId",
+    ],
+  },
+} as const;
 export type SchemaVersion = keyof typeof schemaManifests;
 export function isSchemaVersion(value: unknown): value is SchemaVersion {
   return (
@@ -317,6 +378,8 @@ export function isSchemaVersion(value: unknown): value is SchemaVersion {
     value === 4 ||
     value === 5 ||
     value === 6 ||
-    value === 7
+    value === 7 ||
+    value === 8 ||
+    value === 9
   );
 }

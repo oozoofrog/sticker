@@ -39,9 +39,9 @@ for (const version of [1, 2, 3, 4])
     } finally {
       store.close();
     }
-    assert.equal(validateBackup(dir).schemaVersion, 7);
+    assert.equal(validateBackup(dir).schemaVersion, 9);
   });
-void test("future backup refusal reports only implemented schemas v1–v7 without modifying bytes", (t) => {
+void test("future backup refusal reports only implemented schemas v1–v9 without modifying bytes", (t) => {
   const dir = mkdtempSync(join(tmpdir(), "sticker-future-release-"));
   t.after(() => {
     rmSync(dir, { recursive: true, force: true });
@@ -53,6 +53,9 @@ void test("future backup refusal reports only implemented schemas v1–v7 withou
   db.exec("PRAGMA user_version=999");
   db.close();
   const before = readFileSync(path);
-  assert.throws(() => validateBackup(dir), /Expected 1, 2, 3, 4, 5, 6, 7/);
+  assert.throws(
+    () => validateBackup(dir),
+    /Expected 1, 2, 3, 4, 5, 6, 7, 8, 9/,
+  );
   assert.deepEqual(readFileSync(path), before);
 });

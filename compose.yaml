@@ -18,6 +18,8 @@ services:
       # Empty disables agent access. Nonempty requires compose.agents.yaml.
       # Keep this variable: old configured installs must fail, not silently lose agents.
       AGENT_CONFIG_PATH: ${AGENT_CONFIG_PATH:-}
+      GITHUB_READ_ENABLED: ${GITHUB_READ_ENABLED:-false}
+      GITHUB_CREDENTIAL_CONFIG_PATH: ${GITHUB_CREDENTIAL_CONFIG_PATH:-}
     volumes:
       - sticker_data:/app/data
     read_only: true

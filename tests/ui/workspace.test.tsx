@@ -84,7 +84,10 @@ async function fixture() {
       rmSync(dataDir, { recursive: true, force: true });
     },
     async login() {
-      await screen.findByRole("heading", { name: /생각을 붙이고/ });
+      await screen.findByRole("heading", {
+        name: "나의 작업 공간으로",
+        level: 1,
+      });
       await user.type(screen.getByLabelText("소유자 비밀번호"), password);
       await user.click(screen.getByRole("button", { name: "작업 공간 열기" }));
       await screen.findByRole("heading", { name: "내 작업 공간" });
@@ -235,7 +238,7 @@ void test("DOM + real API: wrong password, Escape focus return, version creation
     await f.click("버전 만들기");
     await screen.findByRole("heading", { name: "v1.0" });
     await f.click("v1.0 버전 편집");
-    assert.equal(screen.queryByRole("option", { name: "배포됨" }), null);
+    assert.equal(screen.queryByRole("option", { name: "출시 확정" }), null);
     await f.user.selectOptions(screen.getByLabelText("버전 상태"), "archived");
     await f.click("변경 저장");
     await screen.findByText("보관됨");
@@ -248,7 +251,7 @@ void test("DOM + real API: wrong password, Escape focus return, version creation
     await screen.findByText("출시 상태가 기록되었습니다.");
     await f.click("취소");
     await f.click("버전 목록");
-    await screen.findByText("배포됨");
+    await screen.findByText("출시 확정");
     await f.click("v1.0 버전 삭제");
     await f.click("삭제하기");
     await waitFor(() => {
@@ -261,7 +264,10 @@ void test("DOM + real API: wrong password, Escape focus return, version creation
     await screen.findByText("출처: 에이전트 자기 보고");
     assert.ok(await screen.findByText(/아직 전달된 세션이 없어요/));
     await f.click("로그아웃");
-    await screen.findByRole("heading", { name: /생각을 붙이고/ });
+    await screen.findByRole("heading", {
+      name: "나의 작업 공간으로",
+      level: 1,
+    });
   } finally {
     await f.close();
   }
@@ -994,6 +1000,97 @@ void test("session pending controls precede long history, show only pending requ
       false,
     );
   } finally {
+    await f.close();
+  }
+});
+
+for (const staleResult of ["success", "unauthenticated", "failure"] as const) {
+  void test(`a delayed ${staleResult} refresh cannot replace a newer workspace`, async () => {
+    const f = await fixture();
+    let release!: () => void;
+    const pending = new Promise<void>((resolve) => {
+      release = resolve;
+    });
+    let captured!: () => void;
+    const responseCaptured = new Promise<void>((resolve) => {
+      captured = resolve;
+    });
+    try {
+      await f.login();
+      const fetch = globalThis.fetch;
+      let delayNext = true;
+      globalThis.fetch = async (input, init) => {
+        const response = await fetch(input, init);
+        if (input === "/api/bootstrap" && delayNext) {
+          delayNext = false;
+          captured();
+          await pending;
+          if (staleResult === "unauthenticated")
+            return Response.json({}, { status: 401 });
+          if (staleResult === "failure") throw new Error("오래된 요청 실패");
+        }
+        return response;
+      };
+      await f.click("작업 공간 새로고침");
+      await responseCaptured;
+      f.instance.store.createProject(
+        {
+          id: "owner",
+          name: "나",
+          role: "owner",
+          canWrite: true,
+          projectIds: null,
+        },
+        { name: "새로 추가한 프로젝트", key: "NEW" },
+      );
+      await f.click("작업 공간 새로고침");
+      await screen.findByRole("button", { name: /^새로 추가한 프로젝트/ });
+      await act(async () => {
+        release();
+        await pending;
+      });
+      assert.ok(screen.getByRole("button", { name: /^새로 추가한 프로젝트/ }));
+      assert.equal(screen.queryByRole("alert"), null);
+    } finally {
+      release();
+      await f.close();
+    }
+  });
+}
+
+void test("a delayed authenticated refresh cannot reopen the workspace after logout", async () => {
+  const f = await fixture();
+  let release!: () => void;
+  const pending = new Promise<void>((resolve) => {
+    release = resolve;
+  });
+  let captured!: () => void;
+  const responseCaptured = new Promise<void>((resolve) => {
+    captured = resolve;
+  });
+  try {
+    await f.login();
+    const fetch = globalThis.fetch;
+    globalThis.fetch = async (input, init) => {
+      const response = await fetch(input, init);
+      if (input === "/api/bootstrap") {
+        captured();
+        await pending;
+      }
+      return response;
+    };
+    await f.click("작업 공간 새로고침");
+    await responseCaptured;
+    await f.click("로그아웃");
+    await screen.findByRole("heading", { name: "나의 작업 공간으로" });
+    await act(async () => {
+      release();
+      await pending;
+    });
+    assert.ok(screen.getByRole("heading", { name: "나의 작업 공간으로" }));
+    assert.equal(screen.queryByRole("heading", { name: "내 작업 공간" }), null);
+  } finally {
+    release();
     await f.close();
   }
 });

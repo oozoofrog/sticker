@@ -2,6 +2,7 @@ import React from "react";
 import { createRoot } from "react-dom/client";
 import App from "./App.js";
 import "./styles.css";
+import "./features/mcp-settings/mcp-settings.css";
 const root = document.getElementById("root");
 if (!root) throw new Error("Missing application root.");
 createRoot(root).render(
@@ -13,3 +14,5 @@ createRoot(root).render(
 import "./features/relations/relations.css";
 
 import "./features/releases/releases.css";
+
+import "./features/history/history.css";

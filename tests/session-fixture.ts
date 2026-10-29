@@ -1,3 +1,4 @@
+import type { GithubProvider } from "../server/features/github.js";
 import { mkdtempSync, rmSync } from "node:fs";
 import { tmpdir } from "node:os";
 import { join } from "node:path";
@@ -13,7 +14,7 @@ export const sessionOwner: Actor = {
   canWrite: true,
   projectIds: null,
 };
-export async function sessionHttpFixture() {
+export async function sessionHttpFixture(githubProvider?: GithubProvider) {
   const dir = mkdtempSync(join(tmpdir(), "sticker-sessions-http-"));
   const seed = new Store(dir),
     project = seed.createProject(sessionOwner, { key: "HP", name: "범위 A" }),
@@ -34,6 +35,7 @@ export async function sessionHttpFixture() {
     unscoped: "fixture-session-unscoped-token-only",
   };
   const instance = createApp({
+    githubProvider,
     dataDir: dir,
     ownerPassword: "disposable-session-owner-password",
     appOrigin: "http://localhost:8787",

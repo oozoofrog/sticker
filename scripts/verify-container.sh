@@ -18,6 +18,7 @@ export STICKER_IMAGE="$project:fixture" STICKER_PORT=0
 export OWNER_PASSWORD="fixture-only-$RANDOM-$RANDOM-$RANDOM-$RANDOM"
 export APP_ORIGIN=http://localhost:8787 SECURE_COOKIES=false AGENT_CONFIG_PATH=
 export STICKER_AGENT_TOKEN= STICKER_AGENT_CONFIG=
+export GITHUB_READ_ENABLED=false GITHUB_CREDENTIAL_CONFIG_PATH=
 export LOCAL_OWNER_MODE=off
 mcp_pid=
 compose() { docker compose --env-file /dev/null "$@"; }
@@ -57,7 +58,7 @@ docker buildx imagetools inspect --raw "$expected_image" | \
 # Launcher boundary tests use only built-in Node APIs and Bash in the image.
 docker run --rm --network none --entrypoint node \
   --mount "type=bind,source=$root,target=/verification,readonly" --workdir /verification \
-  "$STICKER_IMAGE" --test tests/container.test.mjs tests/host-tools.test.mjs tests/container-readiness.test.mjs tests/container-toolchain.test.mjs tests/container-local-owner-isolation.test.mjs
+  "$STICKER_IMAGE" --test tests/container.test.mjs tests/host-tools.test.mjs tests/container-readiness.test.mjs tests/container-toolchain.test.mjs tests/container-github-isolation.test.mjs tests/container-local-owner-isolation.test.mjs
 # Generated only in this disposable test; never persisted in the checkout/logs.
 OWNER_PASSWORD=$(docker run --rm --network none --entrypoint node "$STICKER_IMAGE" -e 'process.stdout.write(require("node:crypto").randomBytes(32).toString("hex"))')
 export OWNER_PASSWORD
@@ -67,12 +68,16 @@ compose exec -T sticker node --input-type=module - initialize < tests/container-
 compose exec -T sticker node --input-type=module - initialize < tests/container-views-smoke.mjs
 compose exec -T sticker node --input-type=module - initialize < tests/container-templates-smoke.mjs
 compose exec -T sticker node --input-type=module - initialize < tests/container-resources-smoke.mjs
+compose exec -T sticker node --input-type=module - initialize < tests/container-github-smoke.mjs
+compose exec -T sticker node --input-type=module - initialize < tests/container-history-smoke.mjs
 compose up -d --force-recreate --wait --wait-timeout 90 sticker
 compose exec -T sticker node --input-type=module - verify < tests/container-smoke.mjs
 compose exec -T sticker node --input-type=module - verify < tests/container-release-smoke.mjs
 compose exec -T sticker node --input-type=module - verify < tests/container-views-smoke.mjs
 compose exec -T sticker node --input-type=module - verify < tests/container-templates-smoke.mjs
 compose exec -T sticker node --input-type=module - verify < tests/container-resources-smoke.mjs
+compose exec -T sticker node --input-type=module - verify < tests/container-github-smoke.mjs
+compose exec -T sticker node --input-type=module - verify < tests/container-history-smoke.mjs
 bash scripts/backup.sh "$temporary/fixture.tar.gz"
 # backup restarts an originally running service, but `start` is not health readiness.
 compose up -d --wait --wait-timeout 90 sticker
@@ -84,6 +89,8 @@ compose exec -T sticker node --input-type=module - verify < tests/container-rele
 compose exec -T sticker node --input-type=module - verify < tests/container-views-smoke.mjs
 compose exec -T sticker node --input-type=module - verify < tests/container-templates-smoke.mjs
 compose exec -T sticker node --input-type=module - verify < tests/container-resources-smoke.mjs
+compose exec -T sticker node --input-type=module - verify < tests/container-github-smoke.mjs
+compose exec -T sticker node --input-type=module - verify < tests/container-history-smoke.mjs
 
 # Agent access is optional. Add a generated read-only grant only after core tests.
 STICKER_AGENT_TOKEN=$(docker run --rm --network none --entrypoint node "$STICKER_IMAGE" -e 'process.stdout.write(require("node:crypto").randomBytes(32).toString("hex"))')
@@ -114,12 +121,13 @@ binding=$(compose port sticker 8787)
 local_port=${binding##*:}
 [[ "$local_port" =~ ^[0-9]+$ && "$local_port" != 8787 ]] || { echo 'Expected nondefault fixture port.' >&2; exit 1; }
 compose stop sticker
-export STICKER_PORT=$local_port APP_ORIGIN="http://127.0.0.1:$local_port" LOCAL_OWNER_MODE=trusted-loopback OWNER_PASSWORD=
-compose config --format json | compose run --rm --no-deps -T --entrypoint node sticker dist/server/check-local-deployment.js compose >/dev/null
-compose up -d --force-recreate --wait --wait-timeout 90 sticker
-started=$(compose ps -q sticker)
-docker inspect --format '{"ports":{{json .NetworkSettings.Ports}},"networkMode":{{json .HostConfig.NetworkMode}}}' "$started" |
-  compose run --rm --no-deps -T --entrypoint node sticker dist/server/check-local-deployment.js inspect "$local_port"
+export STICKER_PORT=$local_port APP_ORIGIN="http://127.0.0.1:$local_port" OWNER_PASSWORD=
+# Standard entry point selects local access itself, even with inherited mode off.
+# COMPOSE_DISABLE_ENV_FILE and the disposable COMPOSE_FILE remain in force.
+LOCAL_OWNER_MODE=off bash scripts/start.sh
+export LOCAL_OWNER_MODE=trusted-loopback
+# Wait for the already inspected container without recreating its configuration.
+compose up -d --no-recreate --wait --wait-timeout 90 sticker
 compose exec -T -e STICKER_AGENT_TOKEN sticker node --input-type=module - < tests/container-local-owner-smoke.mjs
 # Same real STDIO client and scoped token must remain an agent after mode switching.
 verify_mcp

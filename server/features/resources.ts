@@ -610,11 +610,7 @@ export class ResourceService {
     action: string,
     title: string,
   ) {
-    this.ctx.update("issues", issue.id, {
-      revision: issue.revision + 1,
-      updatedAt: this.ctx.now(),
-    });
-    this.ctx.activity(actor, issue.id, action, title);
+    this.ctx.changeIssue(actor, issue, {}, { action, detail: title });
   }
   private linkValue(
     actor: Actor,

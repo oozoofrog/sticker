@@ -1,4 +1,6 @@
+import { github } from "./008-github.js";
 import type { DatabaseSync } from "node:sqlite";
+import { history } from "./009-history.js";
 import { initial } from "./001-initial.js";
 import { sessions } from "./002-sessions.js";
 import { releases } from "./004-releases.js";
@@ -18,6 +20,8 @@ export const migrations: readonly Migration[] = [
   { version: 5, run: views },
   { version: 6, run: templates },
   { version: 7, run: resources },
+  { version: 8, run: github },
+  { version: 9, run: history },
 ];
 /** One transaction for every pending migration; never mutate a future-version database. */
 export function migrate(

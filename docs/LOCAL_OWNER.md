@@ -1,6 +1,6 @@
 # Trusted local owner mode
 
-Default authentication is unchanged: an operator-chosen owner password and a 12-hour in-memory session. `LOCAL_OWNER_MODE=off` is the default. No remembered-device credentials or private authentication database are added by this feature.
+Raw server/Compose authentication is unchanged: an operator-chosen owner password and a 12-hour in-memory session. `LOCAL_OWNER_MODE=off` is the default. No remembered-device credentials or private authentication database are added by this feature.
 
 ## Explicit trust boundary
 
@@ -10,12 +10,20 @@ The app requires an HTTP canonical `APP_ORIGIN` using `localhost` or `127.0.0.1`
 
 The app cannot prevent an administrator bypassing the verified start script, publishing externally afterward, or attaching a hostile peer container to its network. A non-browser network client can forge Host/Origin. These are **not** cryptographically authenticated local identity checks. No Tailnet proxy, Serve/Funnel or gateway configuration is provided or activated.
 
-## Reviewed activation only
+## Standard local installation
 
-Before enabling this on a real installation, obtain the owner's explicit acceptance of the local-user/process and deployment risks above. Code tests do not constitute operational approval. No script edits `.env` or enables this mode automatically.
+The standard installation command is `bash scripts/start.sh`: no password setup or mode toggle is needed. Choosing this local installation trusts the same-machine users/processes described above. The launcher explicitly exports `LOCAL_OWNER_MODE=trusted-loopback` for this invocation, overriding shell and `.env` mode choices without editing either. It preserves `COMPOSE_FILE` and optional agent mounts. Raw startup remains password-based and refuses missing/weak passwords. Code verification is not proof of operational activation.
 
-After that approval, configure `LOCAL_OWNER_MODE=trusted-loopback`, a matching loopback `APP_ORIGIN`, and loopback-only compose publication. In this mode OWNER_PASSWORD may be empty; outside this mode the server still rejects missing/weak passwords. Use `bash scripts/start-local-owner.sh` from a stopped installation. It builds the existing image, validates resolved compose metadata in a no-published-port validation container, starts only Sticker, then inspects actual publication. Validation permits only TCP8787 published to127.0.0.1 at the canonical port. Extra publications and custom network_mode are refused. A running pre-existing service is refused without stopping/reconfiguring it. A failed post-start inspection stops only the target this invocation explicitly started. Do not run concurrent start/deployment operations.
+Keep a matching loopback `APP_ORIGIN` and loopback-only compose publication. In this mode OWNER_PASSWORD may be empty; outside this mode the server still rejects missing/weak passwords. Use `bash scripts/start.sh` from a stopped installation (`start-local-owner.sh` remains the lower-level explicitly configured verifier). It builds the existing image, validates resolved compose metadata in a no-published-port validation container, starts only Sticker, then inspects actual publication. Validation permits only TCP8787 published to127.0.0.1 at the canonical port. Extra publications and custom network_mode are refused. A running pre-existing service is refused without stopping/reconfiguring it. A failed post-start inspection stops only the target this invocation explicitly started. Do not run concurrent start/deployment operations.
 
-The authenticated UI identifies `로컬 소유자` rather than offering a misleading logout: access is determined by the deployment mode, not a browser cookie. To end passwordless access, explicitly stop the deployment, restore password mode and a unique owner password, then restart. No mode changes are performed from the app.
+The authenticated UI identifies `로컬 소유자` rather than offering a misleading logout: access is determined by the deployment mode, not a browser cookie. To end passwordless access, explicitly stop the deployment, restore password mode and a unique owner password, then use raw Compose startup rather than the local launcher. No mode changes are performed from the app.
 
 Project backup/restore does not carry an authentication grant; local-owner access remains an external operator deployment setting. Default password sessions still disappear on restart. Docker exposure must be reviewed again after configuration changes or restoration onto another host.
+
+## Docker Server support boundary
+
+Verified local startup requires a stable **Docker Server Engine 28.3.3 or newer**, not merely a recent CLI. The launcher queries `docker version --format '{{.Server.Version}}'` before build/start/stop mutations. A failed query, unknown result, prerelease, vendor suffix, leading-zero component or non-numeric version is refused rather than guessed safe. Only canonical `major.minor.patch` components (0–999) are accepted. Older engines remain usable only through separately configured password-authenticated startup; the launcher does not upgrade Docker automatically.
+
+Docker documents [localhost publication leakage before 28.0.0](https://docs.docker.com/engine/network/port-publishing/) and a [28.3.3 fix for loopback publication after firewalld reload](https://docs.docker.com/engine/release-notes/28/). Version gating does not prove arbitrary host firewall/network configuration safe, and these upstream notes are not a vulnerability finding about any particular user's Mac. Host publication inspection and request restrictions remain required.
+
+“Same machine” and the local browser URL assume a local Engine/Desktop context on the current computer. The launcher preserves the selected Docker context and `DOCKER_HOST`; it never silently switches them. For a remote daemon, loopback publication and trusted local users/processes refer to that Docker host, not the CLI computer, and local browser reachability is not guaranteed.

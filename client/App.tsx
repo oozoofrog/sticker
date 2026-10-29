@@ -3,12 +3,20 @@ import { accessModeSchema } from "../server/contracts/access.js";
 import { useViewResource } from "./features/views/useViewResource.js";
 import { ResourceWorkspace } from "./features/resources/ResourceWorkspace.js";
 import TemplateWorkspace from "./features/templates/TemplateWorkspace.js";
+import { GithubSettings } from "./features/github/GithubSettings.js";
+import { McpSettings } from "./features/mcp-settings/McpSettings.js";
 import { SavedIssueWorkspace } from "./features/views/SavedIssueWorkspace.js";
 import { SavedViewNavigation } from "./features/views/SavedViewNavigation.js";
 import VersionDetail from "./features/releases/VersionDetail.js";
 import { useRelationSummaries } from "./features/relations/RelationSummary.js";
 import { bootstrapSchema } from "../server/response-schemas.js";
-import React, { useCallback, useEffect, useMemo, useState } from "react";
+import React, {
+  useCallback,
+  useEffect,
+  useMemo,
+  useRef,
+  useState,
+} from "react";
 import type { Bootstrap, Project, Status, Version } from "../server/types.js";
 import { api, ApiError, json, errorText } from "./api.js";
 import { Icon, Empty, ErrorNotice } from "./components.js";
@@ -24,6 +32,8 @@ import { readRoute, navigate, subscribeRoute, type Route } from "./router.js";
 import AgentSessions from "./features/sessions/AgentSessions.js";
 import OwnerInbox from "./features/sessions/OwnerInbox.js";
 export default function App() {
+  const [mcpSettings, setMcpSettings] = useState(false);
+  const [githubProject, setGithubProject] = useState<string | null>(null);
   const [data, setData] = useState<Bootstrap | null>(null);
   const relations = useRelationSummaries(data);
   const [loading, setLoading] = useState(true);
@@ -61,33 +71,38 @@ export default function App() {
       ...(project ? { project } : {}),
     });
   }, []);
-  const refresh = useCallback(
-    () =>
-      api("/bootstrap", undefined, bootstrapSchema)
-        .then(
-          (next) => {
-            setData(next);
-            setAuthenticated(true);
-            setError("");
-          },
-          (e: unknown) => {
-            if (e instanceof ApiError && e.status === 401) {
-              setAuthenticated(false);
-              setData(null);
-            } else setError(errorText(e));
-          },
-        )
-        .finally(() => {
-          setReportTime(Date.now());
-          setLoading(false);
-        }),
-    [],
-  );
+  const refreshSequence = useRef(0);
+  const refresh = useCallback(() => {
+    const sequence = ++refreshSequence.current;
+    return api("/bootstrap", undefined, bootstrapSchema)
+      .then(
+        (next) => {
+          if (sequence !== refreshSequence.current) return;
+          setData(next);
+          setAuthenticated(true);
+          setError("");
+        },
+        (e: unknown) => {
+          if (sequence !== refreshSequence.current) return;
+          if (e instanceof ApiError && e.status === 401) {
+            setAuthenticated(false);
+            setData(null);
+          } else setError(errorText(e));
+        },
+      )
+      .finally(() => {
+        if (sequence !== refreshSequence.current) return;
+        setReportTime(Date.now());
+        setLoading(false);
+      });
+  }, []);
   useEffect(() => {
+    const requests = refreshSequence;
     void refresh();
     const timer = setInterval(() => void refresh(), 30_000);
     return () => {
       clearInterval(timer);
+      requests.current++;
     };
   }, [refresh]);
   useEffect(() => subscribeRoute(setRoute), []);
@@ -155,6 +170,7 @@ export default function App() {
   async function logout() {
     try {
       await api("/session", { method: "DELETE" });
+      refreshSequence.current++;
       setAuthenticated(false);
       setData(null);
       navigate({ section: "issues", project: "", issue: "" });
@@ -211,7 +227,8 @@ export default function App() {
             projectEditor ||
             versionEditor ||
             issueEditor ||
-            deleteTarget
+            deleteTarget ||
+            mcpSettings
           )
         }
       >
@@ -276,6 +293,16 @@ export default function App() {
             <Icon name="message" />
             <span>사용자 확인함</span>
           </button>
+          {data.actor.role === "owner" && (
+            <button
+              onClick={() => {
+                setMcpSettings(true);
+              }}
+            >
+              <Icon name="link" />
+              <span>MCP 연결</span>
+            </button>
+          )}
         </nav>
         <div className="project-nav-header">
           <span className="nav-label">MY PROJECTS</span>
@@ -352,7 +379,8 @@ export default function App() {
             projectEditor ||
             versionEditor ||
             issueEditor ||
-            deleteTarget
+            deleteTarget ||
+            mcpSettings
           )
         }
       >
@@ -406,6 +434,18 @@ export default function App() {
               )}
             </div>
             <div className="heading-actions">
+              {project &&
+                route.section === "issues" &&
+                data.actor.role === "owner" && (
+                  <button
+                    className="button secondary"
+                    onClick={() => {
+                      setGithubProject(project.id);
+                    }}
+                  >
+                    GitHub 연결
+                  </button>
+                )}
               {project && ["issues", "versions"].includes(route.section) && (
                 <button
                   className="button secondary"
@@ -808,8 +848,7 @@ export default function App() {
                   </div>
                 ) : (
                   <Empty
-                    title="다음 릴리스를 위한 한 장"
-                    description="버전을 만들고 목표 이슈를 연결해 보세요. 발견한 버전과 수정한 버전도 별도로 남길 수 있어요."
+                    title="버전 없음"
                     action={
                       <button className="button primary" onClick={newVersion}>
                         첫 버전 만들기
@@ -843,6 +882,23 @@ export default function App() {
           <Icon name="check" size={17} />
           {notice}
         </div>
+      )}
+      {mcpSettings && data.actor.role === "owner" && (
+        <McpSettings
+          projects={data.projects}
+          onClose={() => {
+            setMcpSettings(false);
+          }}
+        />
+      )}
+      {githubProject && (
+        <GithubSettings
+          key={githubProject}
+          projectId={githubProject}
+          onClose={() => {
+            setGithubProject(null);
+          }}
+        />
       )}
       {projectEditor && (
         <ProjectEditor
@@ -969,42 +1025,12 @@ function Login({
           <Icon name="lock" size={13} /> YOUR PRIVATE WORKSPACE
         </span>
       </header>
-      <main className="login-content">
-        <div className="login-story">
-          <div className="eyebrow">SMALL NOTES. CLEAR DIRECTION.</div>
-          <h1>
-            생각을 붙이고,
-            <br />
-            일을 움직여요.
-          </h1>
-
-          <div className="login-stickers" aria-hidden="true">
-            <div className="login-sticker green">
-              <span>IDEA → DONE</span>
-              <strong>
-                한 장씩,
-                <br />
-                앞으로.
-              </strong>
-              <i>↗</i>
-            </div>
-            <div className="login-sticker purple">
-              <span>LESS NOISE.</span>
-              <strong>
-                더 선명한
-                <br />
-                다음 할 일.
-              </strong>
-              <i>✳</i>
-            </div>
-            <span className="login-scribble">붙여 두면, 잊지 않으니까.</span>
-          </div>
-        </div>
+      <main className="login-content login-content--auth-only">
         <section className="login-card">
           <span className="login-card-icon">
             <Icon name="lock" size={25} />
           </span>
-          <h2>나의 작업 공간으로</h2>
+          <h1 className="login-title">나의 작업 공간으로</h1>
           <form
             onSubmit={(e) => {
               void (async () => {
@@ -1051,7 +1077,6 @@ function Login({
           </div>
         </section>
       </main>
-      <footer>STICKER — FOR YOUR NEXT LITTLE BIG THING.</footer>
     </div>
   );
 }
