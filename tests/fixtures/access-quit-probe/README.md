@@ -33,3 +33,17 @@ Expected busy case: click Start dummy task and wait for `B/task-started`; send O
 Test the native Quit probe button separately from OS quit; they are different dispatch paths. Capture the nonmodal window and timestamps. If bridge/class/selector dispatch fails, report the original local error and exact phase; do not change product code yet.
 
 After each run, reset only that fixture's gate/marker files before starting a fresh process. Once probes and dummy tasks have exited, remove only the explicitly created temporary fixture directory. Do not send killall, stop Docker, modify login items, or install this diagnostic in Applications.
+
+## C: experimental cancellation reply (not a product fix)
+
+C keeps the proven B nonmodal/idle structure and existing applet delegate. Only internal button handling and OS quit handling are separated: internal requests set `quitRequested`; busy OS quit throws an Error with `errorNumber = -128`. The generic AppleEvent user-cancellation meaning is documented, but JXA propagation of this property is **not verified**. B's ordinary return already proved insufficient on the test Mac.
+
+Official context: https://developer.apple.com/library/archive/documentation/MacOSX/Conceptual/BPSystemStartup/Chapters/Lifecycle.html (userCanceledErr -128). This does not establish JXA Error-property mapping or applet-specific cancellation semantics.
+
+- Record the exact OS caller error number/reply; do not treat a generic error as proof of -128 propagation.
+- Idle OS quit should reach `quit-enter`, `request-quit`, `exit-idle` and exit only C.
+- Busy OS quit should reach `quit-enter`, `quit-cancel-128`; **before gate release** require parent PID and dummy task alive, ongoing idle traces, and no unexpected modal error alert. If the PID exits, idle stalls or a dialog blocks it, the hypothesis failed.
+- Release C/release-gate only after these observations. Require `task-complete`, `task-cleanup`, `exit-after-task` and eventual parent exit. Never infer cleanup merely from PID disappearance.
+- Fresh process, repeat busy quit using the internal button. It must use `request-quit`, `quit-deferred`, not throw from idle. Observe completion/cleanup/exit after gate release.
+
+Node VM tests cover only the requested branch/error object's structure. Actual AppleEvent propagation, event-loop continuity and task survival require Mac evidence. Product controller remains unchanged until a verified result and independent review.

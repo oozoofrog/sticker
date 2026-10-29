@@ -1,0 +1,18 @@
+// Probe C overlay ONLY: test JXA -> AppleEvent error propagation, not a proven fix.
+function requestQuit() {
+  trace('request-quit');
+  quitRequested = true;
+  if (task) { trace('quit-deferred'); return; }
+  trace('exit-idle'); $.exit(0);
+}
+function quit() {
+  trace('quit-enter');
+  if (task) {
+    quitRequested = true;
+    trace('quit-cancel-128');
+    var cancellation = new Error('Dummy task still running');
+    cancellation.errorNumber = -128;
+    throw cancellation;
+  }
+  requestQuit();
+}

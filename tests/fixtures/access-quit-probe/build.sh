@@ -7,7 +7,7 @@ ROOT=$(CDPATH='' cd -- "$(dirname -- "$0")/../../.." && pwd -P)
 FIXTURE="$ROOT/tests/fixtures/access-quit-probe"
 mkdir -m 700 "$1"
 BASE=$(CDPATH='' cd -- "$1" && pwd -P)
-for kind in A B; do
+for kind in A B C; do
   directory="$BASE/$kind"; mkdir -m 700 "$directory"; : > "$directory/trace.log"; chmod 600 "$directory/trace.log"
   mkdir "$directory/scripts"
   cat > "$directory/dummy.sh" <<'SCRIPT'
@@ -29,7 +29,11 @@ SCRIPT
   if [[ "$kind" = A ]]; then
     cat "$ROOT/packaging/macos/contract.js" >> "$directory/probe.js"
     sed -e "s/function quit() {/function quit() { trace('quit-enter');/" -e "s/function run() {/function run() { trace('run-enter');/" "$ROOT/packaging/macos/Sticker.jxa" >> "$directory/probe.js"
-  else cat "$FIXTURE/nonmodal.jxa" >> "$directory/probe.js"; fi
+  elif [[ "$kind" = B ]]; then cat "$FIXTURE/nonmodal.jxa" >> "$directory/probe.js"
+  else
+    sed -e "s/Sticker quit probe B/Sticker quit probe C/" -e 's/pending = null; quit();/pending = null; requestQuit();/' "$FIXTURE/nonmodal.jxa" >> "$directory/probe.js"
+    cat "$FIXTURE/cancel.jxa" >> "$directory/probe.js"
+  fi
   # Confirm -s means stay-open with this machine's osacompile -h before running.
   /usr/bin/osacompile -s -l JavaScript -o "$directory/Probe.app" "$directory/probe.js"
   resources="$directory/Probe.app/Contents/Resources"

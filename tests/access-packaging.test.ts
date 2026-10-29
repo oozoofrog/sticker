@@ -464,3 +464,62 @@ void test("nonmodal diagnostic queues no second start while busy or quitting", a
     1,
   );
 });
+
+void test("diagnostic C separates internal quit from experimental AppleEvent cancellation", async () => {
+  const { runInNewContext } = await import("node:vm");
+  let exits = 0;
+  const context: {
+    quit?: () => void;
+    idle?: () => number;
+    task?: object | null;
+    pending?: string | null;
+    quitRequested?: boolean;
+    ObjC: unknown;
+    $: unknown;
+    trace: () => void;
+  } = {
+    ObjC: {
+      import: () => undefined,
+      bindFunction: () => undefined,
+      registerSubclass: () => undefined,
+    },
+    $: {
+      exit: () => {
+        exits++;
+      },
+    },
+    trace: () => undefined,
+  };
+  const base = readFileSync(
+    join(root, "tests/fixtures/access-quit-probe/nonmodal.jxa"),
+    "utf8",
+  ).replace("pending = null; quit();", "pending = null; requestQuit();");
+  runInNewContext(
+    base +
+      "\n" +
+      readFileSync(
+        join(root, "tests/fixtures/access-quit-probe/cancel.jxa"),
+        "utf8",
+      ),
+    context,
+  );
+  assert.ok(context.quit);
+  assert.ok(context.idle);
+  context.task = { running: true };
+  assert.throws(
+    () => context.quit?.(),
+    (error: unknown) =>
+      typeof error === "object" &&
+      error !== null &&
+      "errorNumber" in error &&
+      error.errorNumber === -128,
+  );
+  assert.equal(context.quitRequested, true);
+  assert.equal(exits, 0);
+  context.pending = "quit";
+  assert.equal(context.idle(), 1);
+  assert.equal(exits, 0);
+  context.task = null;
+  context.quit();
+  assert.equal(exits, 1);
+});
