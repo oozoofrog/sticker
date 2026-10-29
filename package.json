@@ -13,7 +13,7 @@
     "start": "node dist/server/index.js",
     "mcp": "node dist/server/mcp.js",
     "typecheck": "tsc --noEmit",
-    "test": "node --import tsx --test tests/*.test.ts tests/ui/*.test.ts tests/ui/*.test.tsx",
+    "test": "node --import tsx --test tests/*.test.ts tests/ui/*.test.ts tests/ui/*.test.tsx && node --test tests/access-runtime.test.mjs",
     "test:ui": "playwright test",
     "format:check": "prettier --check \"{server,client,tests}/**/*.{ts,tsx,css,mjs}\" \"*.{ts,mjs,json,html,yaml}\" \"{README.md,docs/**/*.md}\" \".github/workflows/*.{yml,yaml}\"",
     "test:production": "node tests/production-smoke.mjs",

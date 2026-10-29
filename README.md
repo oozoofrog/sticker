@@ -43,7 +43,7 @@
 ```bash
 cp .env.example .env
 chmod 600 .env
-bash scripts/start.sh
+bash scripts/sticker.sh start
 docker compose logs --tail=50 sticker
 ```
 
@@ -57,6 +57,18 @@ docker compose logs --tail=50 sticker
 - 컨테이너는 비루트 `node` 사용자로 실행되며, 루트 파일시스템은 읽기 전용입니다. 기본 설치에는 호스트 폴더 마운트가 없습니다.
 - 에이전트는 선택 사항입니다. 운영자 JSON 파일을 읽을 때만 `compose.agents.yaml`을 적용합니다. 기존 `AGENT_CONFIG_PATH` 사용자는 [이전 안내](docs/INSTALL.md#선택-에이전트--mcp)를 확인하세요.
 - 새 체크아웃의 실제 Docker 검증은 `bash scripts/verify-container.sh`와 [컨테이너 CI](.github/workflows/container.yml)로 실행합니다. 검증은 전용 임시 프로젝트/볼륨만 사용합니다.
+
+### 다시 열기 · 서비스 상태
+
+```bash
+bash scripts/sticker.sh open
+bash scripts/sticker.sh status
+# 서비스를 명시적으로 중지/시작합니다. 데이터는 삭제하지 않습니다.
+bash scripts/sticker.sh stop
+bash scripts/sticker.sh start
+```
+
+`open`은 꺼진 서비스를 몰래 시작하지 않습니다. 표시한 준비 상태는 컨테이너 내부 앱 응답이며 현재 브라우저의 접속 성공과는 다릅니다. 원격 Docker나 GUI 없는 환경에서는 확인된 Docker 호스트 주소만 출력합니다. [제어 명령과 제한](docs/ACCESS_RUNTIME.md).
 
 ### 휴대폰 또는 다른 컴퓨터에서 쓰려면
 

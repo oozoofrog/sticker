@@ -14,7 +14,7 @@
 ```bash
 cp .env.example .env
 chmod 600 .env
-bash scripts/start.sh
+bash scripts/sticker.sh start
 docker compose logs --tail=50 sticker
 ```
 
@@ -65,3 +65,5 @@ bash scripts/verify-container.sh
 표준 로컬 런처는 Docker **서버** 버전을 변경 작업 전에 확인합니다. 안정 버전 숫자 형식 `x.y.z`만 허용하고 조회 실패·구버전·prerelease/vendor 접미사는 거절합니다. Docker 업그레이드는 자동 수행하지 않습니다. [최소 버전 근거와 한계](LOCAL_OWNER.md#docker-server-support-boundary).
 
 “같은 컴퓨터”와 `localhost` 접속 안내는 현재 컴퓨터의 로컬 Docker Engine/Desktop 컨텍스트를 전제로 합니다. 런처는 선택한 Docker context/`DOCKER_HOST`를 존중하고 임의로 전환하지 않습니다. 원격 daemon이면 loopback 바인딩과 로컬 사용자·프로세스 신뢰는 그 Docker 호스트 기준이며, 현재 컴퓨터의 브라우저에서 접속할 수 있다는 뜻이 아닙니다.
+
+다시 열 때는 `bash scripts/sticker.sh open`, 상태 조회는 `bash scripts/sticker.sh status`를 사용하세요. 이 공통 진입점은 호출한 셸의 현재 디렉터리와 관계없이 설치 디렉터리의 설정을 사용하며, 시작은 기존 검증 런처를 그대로 거칩니다. [기계 판독 계약과 운영 한계](ACCESS_RUNTIME.md).

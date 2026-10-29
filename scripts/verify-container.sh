@@ -58,7 +58,7 @@ docker buildx imagetools inspect --raw "$expected_image" | \
 # Launcher boundary tests use only built-in Node APIs and Bash in the image.
 docker run --rm --network none --entrypoint node \
   --mount "type=bind,source=$root,target=/verification,readonly" --workdir /verification \
-  "$STICKER_IMAGE" --test tests/container.test.mjs tests/host-tools.test.mjs tests/container-readiness.test.mjs tests/container-toolchain.test.mjs tests/container-github-isolation.test.mjs tests/container-local-owner-isolation.test.mjs
+  "$STICKER_IMAGE" --test tests/container.test.mjs tests/host-tools.test.mjs tests/container-readiness.test.mjs tests/container-toolchain.test.mjs tests/container-github-isolation.test.mjs tests/container-local-owner-isolation.test.mjs tests/access-runtime.test.mjs
 # Generated only in this disposable test; never persisted in the checkout/logs.
 OWNER_PASSWORD=$(docker run --rm --network none --entrypoint node "$STICKER_IMAGE" -e 'process.stdout.write(require("node:crypto").randomBytes(32).toString("hex"))')
 export OWNER_PASSWORD
@@ -131,4 +131,25 @@ compose up -d --no-recreate --wait --wait-timeout 90 sticker
 compose exec -T -e STICKER_AGENT_TOKEN sticker node --input-type=module - < tests/container-local-owner-smoke.mjs
 # Same real STDIO client and scoped token must remain an agent after mode switching.
 verify_mcp
+# Exercise the same public CLI used by desktop launchers, never an operator project.
+check_access() {
+  bash scripts/sticker.sh "$1" --json |
+    docker run --rm -i --network none -e APP_ORIGIN --entrypoint node \
+      --mount "type=bind,source=$root/tests/container-access-smoke.mjs,target=/app/access-smoke.mjs,readonly" \
+      "$STICKER_IMAGE" /app/access-smoke.mjs "$2"
+}
+check_access status ready
+STICKER_OPEN_BROWSER=0 check_access open url_only
+before_id=$(compose ps -q sticker)
+check_access start unchanged
+[[ "$(compose ps -q sticker)" == "$before_id" ]] || { echo 'Running start changed the target.' >&2; exit 1; }
+compose exec -T sticker node --input-type=module - < tests/container-access-snapshot.mjs > "$temporary/access-before.json"
+check_access stop stopped
+check_access status stopped
+check_access start started
+compose exec -T sticker node --input-type=module - < tests/container-access-snapshot.mjs > "$temporary/access-after.json"
+docker run --rm --network none --entrypoint node \
+  --mount "type=bind,source=$temporary/access-before.json,target=/before.json,readonly" \
+  --mount "type=bind,source=$temporary/access-after.json,target=/after.json,readonly" \
+  "$STICKER_IMAGE" -e 'const fs=require("node:fs"),assert=require("node:assert/strict");assert.deepEqual(JSON.parse(fs.readFileSync("/before.json","utf8")),JSON.parse(fs.readFileSync("/after.json","utf8")));console.log("Access stop/start preserved all logical data and upload bytes.")'
 printf 'Container verification passed: clean build, private API, persisted SQLite/uploads, backup/restore, trusted loopback owner and optional STDIO MCP.\n'
