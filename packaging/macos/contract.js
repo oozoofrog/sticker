@@ -48,13 +48,21 @@ globalThis.StickerAccess = (() => {
           !/^sticker-control-[0-9]+-[0-9]+$/.test(value.lockName)) ||
         (value.url !== null &&
           (typeof value.url !== "string" ||
-            !/^http:\/\/(localhost|127\.0\.0\.1):[0-9]{1,5}$/.test(value.url)))
+            !/^http:\/\/(localhost|127\.0\.0\.1)(:[1-9][0-9]{0,4})?$/.test(
+              value.url,
+            )))
       )
         return unknown();
       if (value.url !== null) {
-        const port = Number(value.url.slice(value.url.lastIndexOf(":") + 1));
+        const match = /:([0-9]+)$/.exec(value.url);
+        const port = match ? Number(match[1]) : 80;
         if (port < 1 || port > 65535) return unknown();
       }
+      if (
+        value.state === "ready" &&
+        (value.containerRunning !== true || value.appResponse !== "verified")
+      )
+        return unknown();
       return value;
     } catch {
       return unknown();

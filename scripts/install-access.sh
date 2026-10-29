@@ -93,7 +93,7 @@ else
     [[ -f "$manifest" && ! -L "$manifest" ]] || fail '앱 소유 정보를 확인할 수 없습니다.'
     manifest > "$stage/expected"
     cmp -s "$manifest" "$stage/expected" || fail '다른 설치의 앱입니다.'
-    [[ "$(/usr/bin/plutil -extract CFBundleIdentifier raw "$target/Contents/Info.plist")" = org.oozoofrog.sticker.access ]] || fail '다른 앱 식별자입니다.'
+    [[ "$(/usr/bin/plutil -extract CFBundleIdentifier raw -o - "$target/Contents/Info.plist")" = org.oozoofrog.sticker.access ]] || fail '다른 앱 식별자입니다.'
     [[ "$(/usr/bin/osascript -l JavaScript "$ROOT/packaging/macos/is-running.jxa" "$target")" = stopped ]] || fail '기존 스티커 접근 앱을 종료한 뒤 설치하세요.'
   fi
   cat "$ROOT/packaging/macos/contract.js" "$ROOT/packaging/macos/Sticker.jxa" > "$stage/Sticker.js"

@@ -206,3 +206,71 @@ void test("installation pins context and rejects changed scope on repeat", () =>
     f.close();
   }
 });
+
+void test("Linux control keeps pinned context/project and invokes the selected executable without shell expansion", () => {
+  const f = fixture();
+  try {
+    const target = join(f.temp, "Sticker.desktop");
+    assert.equal(f.run("--linux", target).status, 0);
+    writeFileSync(
+      join(f.source, "scripts/sticker.sh"),
+      '#!/bin/bash\nprintf "%s|%s|%s|%s\\n" "$1" "$DOCKER_CONTEXT" "${COMPOSE_PROJECT_NAME:-unset}" "${DOCKER_HOST:-unset}"\ndocker context show\n',
+    );
+    const result = spawnSync(
+      "bash",
+      [
+        join(f.source, "packaging/linux/control.sh"),
+        target + ".sticker-manifest",
+        "status",
+      ],
+      {
+        encoding: "utf8",
+        env: {
+          ...process.env,
+          HOME: f.temp,
+          DOCKER_CONTEXT: "wrong",
+          DOCKER_HOST: "tcp://other",
+          COMPOSE_PROJECT_NAME: "other-project",
+        },
+      },
+    );
+    assert.equal(result.status, 0, result.stderr);
+    assert.match(result.stdout, /status\|desktop-linux\|unset\|unset/);
+    assert.match(result.stdout, /desktop-linux/);
+  } finally {
+    f.close();
+  }
+});
+
+void test("Mac status supports the verified default HTTP port and rejects inconsistent ready responses", async () => {
+  const { runInNewContext } = await import("node:vm");
+  const context: {
+    StickerAccess?: {
+      parse: (value: string) => { state: string; url: string | null };
+    };
+  } = {};
+  runInNewContext(
+    readFileSync(join(root, "packaging/macos/contract.js"), "utf8"),
+    context,
+  );
+  const api = context.StickerAccess;
+  assert.ok(api);
+  const status = {
+    schemaVersion: 1,
+    state: "ready",
+    containerRunning: true,
+    appResponse: "verified",
+    browserReachability: "unverified",
+    daemon: "local_socket",
+    url: "http://localhost",
+    urlScope: "docker_host",
+    reason: "none",
+    action: "none",
+    lockName: "",
+  };
+  assert.equal(api.parse(JSON.stringify(status)).url, "http://localhost");
+  assert.equal(
+    api.parse(JSON.stringify({ ...status, appResponse: "unavailable" })).state,
+    "unknown",
+  );
+});
