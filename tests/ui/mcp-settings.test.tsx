@@ -31,58 +31,157 @@ const { render, screen, cleanup, within, waitFor, act } =
 const { userEvent } = await import("@testing-library/user-event");
 const App = (await import("../../client/App.js")).default;
 const nativeFetch = globalThis.fetch;
-async function setup(configured = true, owner = true) {
+async function setup(
+  configured = true,
+  owner = true,
+  ready: (
+    fixture: Awaited<ReturnType<typeof mcpSettingsFixture>>,
+  ) => Promise<unknown> = () =>
+    screen.findByRole("heading", { name: "내 작업 공간", level: 1 }),
+) {
   const f = await mcpSettingsFixture(configured);
-  const state = { failSettings: false };
-  globalThis.fetch = async (input, init = {}) => {
-    const path =
-      typeof input === "string"
-        ? input
-        : input instanceof URL
-          ? input.href
-          : input.url;
-    if (
-      new URL(path, f.base).pathname === "/api/mcp/settings" &&
-      state.failSettings
-    )
-      return new Response(
-        JSON.stringify({ error: "설정 조회 실패", code: "UNAVAILABLE" }),
-        { status: 503, headers: { "content-type": "application/json" } },
+  try {
+    const state = { failSettings: false };
+    globalThis.fetch = async (input, init = {}) => {
+      const path =
+        typeof input === "string"
+          ? input
+          : input instanceof URL
+            ? input.href
+            : input.url;
+      if (
+        new URL(path, f.base).pathname === "/api/mcp/settings" &&
+        state.failSettings
+      )
+        return new Response(
+          JSON.stringify({ error: "설정 조회 실패", code: "UNAVAILABLE" }),
+          { status: 503, headers: { "content-type": "application/json" } },
+        );
+      const headers = new Headers(init.headers);
+      if (owner) headers.set("cookie", f.cookie);
+      else headers.set("authorization", `Bearer ${f.tokens.read}`);
+      if (init.method && !["GET", "HEAD"].includes(init.method))
+        headers.set("origin", "http://localhost:8787");
+      return nativeFetch(new URL(path, f.base), { ...init, headers });
+    };
+    const user = userEvent.setup({ document: dom.window.document });
+    dom.window.history.replaceState({}, "", "/");
+    render(<App />);
+    await ready(f);
+    return {
+      f,
+      user,
+      state,
+      clipboard(
+        value: { writeText: (value: string) => Promise<void> } | undefined,
+      ) {
+        Object.defineProperty(dom.window.navigator, "clipboard", {
+          configurable: true,
+          value,
+        });
+      },
+      async open() {
+        await user.click(screen.getByRole("button", { name: "MCP 연결" }));
+        return screen.findByRole("dialog", { name: "MCP 연결" });
+      },
+      async close() {
+        cleanup();
+        globalThis.fetch = nativeFetch;
+        await f.close();
+      },
+    };
+  } catch (error) {
+    const teardownFailures: unknown[] = [];
+    try {
+      try {
+        cleanup();
+      } finally {
+        globalThis.fetch = nativeFetch;
+        await f.close();
+      }
+    } catch (teardownError) {
+      teardownFailures.push(teardownError);
+    }
+    if (teardownFailures.length > 0) {
+      throw new AggregateError(
+        [error, ...teardownFailures],
+        "MCP settings setup and cleanup failed",
+        { cause: error },
       );
-    const headers = new Headers(init.headers);
-    if (owner) headers.set("cookie", f.cookie);
-    else headers.set("authorization", `Bearer ${f.tokens.read}`);
-    if (init.method && !["GET", "HEAD"].includes(init.method))
-      headers.set("origin", "http://localhost:8787");
-    return nativeFetch(new URL(path, f.base), { ...init, headers });
-  };
-  const user = userEvent.setup({ document: dom.window.document });
-  dom.window.history.replaceState({}, "", "/");
-  render(<App />);
-  await screen.findByRole("heading", { name: "내 작업 공간", level: 1 });
-  return {
-    f,
-    user,
-    state,
-    clipboard(
-      value: { writeText: (value: string) => Promise<void> } | undefined,
-    ) {
-      Object.defineProperty(dom.window.navigator, "clipboard", {
-        configurable: true,
-        value,
-      });
-    },
-    async open() {
-      await user.click(screen.getByRole("button", { name: "MCP 연결" }));
-      return screen.findByRole("dialog", { name: "MCP 연결" });
-    },
-    async close() {
-      cleanup();
-      globalThis.fetch = nativeFetch;
-      await f.close();
-    },
-  };
+    }
+    throw error;
+  }
 }
+
+void test("failed initial setup releases its fixture, DOM and fetch override", async () => {
+  const failure = new Error("forced initial heading failure");
+  let fixture: Awaited<ReturnType<typeof mcpSettingsFixture>> | undefined;
+  let closeCalls = 0;
+  try {
+    await assert.rejects(
+      setup(true, true, async (f) => {
+        fixture = f;
+        const close = f.close.bind(f);
+        f.close = async () => {
+          closeCalls += 1;
+          await close();
+        };
+        assert.notEqual(globalThis.fetch, nativeFetch);
+        assert.notEqual(document.body.childElementCount, 0);
+        await Promise.resolve();
+        throw failure;
+      }),
+      (error) => error === failure,
+    );
+    assert.equal(closeCalls, 1);
+    assert.equal(globalThis.fetch, nativeFetch);
+    assert.equal(document.body.childElementCount, 0);
+    assert.ok(fixture);
+    await assert.rejects(nativeFetch(`${fixture.base}/api/health`));
+  } finally {
+    // Keep the red regression itself from leaving a listening server behind.
+    cleanup();
+    globalThis.fetch = nativeFetch;
+    if (closeCalls === 0) await fixture?.close();
+  }
+});
+
+void test("failed setup retains both initialization and teardown failures", async () => {
+  const failure = new Error("forced initial heading failure");
+  const teardownFailure = new Error("forced fixture close failure");
+  let fixture: Awaited<ReturnType<typeof mcpSettingsFixture>> | undefined;
+  let closeCalls = 0;
+  try {
+    await assert.rejects(
+      setup(true, true, async (f) => {
+        fixture = f;
+        const close = f.close.bind(f);
+        f.close = async () => {
+          closeCalls += 1;
+          await close();
+          throw teardownFailure;
+        };
+        await Promise.resolve();
+        throw failure;
+      }),
+      (error: unknown) => {
+        assert.ok(error instanceof AggregateError);
+        assert.equal(error.cause, failure);
+        assert.deepEqual(error.errors, [failure, teardownFailure]);
+        return true;
+      },
+    );
+    assert.equal(closeCalls, 1);
+    assert.equal(globalThis.fetch, nativeFetch);
+    assert.equal(document.body.childElementCount, 0);
+    assert.ok(fixture);
+    await assert.rejects(nativeFetch(`${fixture.base}/api/health`));
+  } finally {
+    cleanup();
+    globalThis.fetch = nativeFetch;
+    if (closeCalls === 0) await fixture?.close();
+  }
+});
 
 void test("owner discovers MCP settings with actual grant scopes, not automatic setup or verified client claims", async () => {
   const s = await setup();
