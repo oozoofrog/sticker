@@ -38,7 +38,7 @@ globalThis.StickerHostProcess = (() => {
             return;
           }
           if (!state.discard) state.buffer.appendData(data);
-          handle.readInBackgroundAndNotify();
+          void handle.readInBackgroundAndNotify;
         },
       },
     },
@@ -97,10 +97,10 @@ globalThis.StickerHostProcess = (() => {
     let launched = false,
       closed = false;
     try {
-      task.launch();
+      void task.launch;
       launched = true;
-      out.handle.readInBackgroundAndNotify();
-      err.handle.readInBackgroundAndNotify();
+      void out.handle.readInBackgroundAndNotify;
+      void err.handle.readInBackgroundAndNotify;
     } catch {
       try {
         close();
@@ -116,7 +116,7 @@ globalThis.StickerHostProcess = (() => {
       if (closed) return;
       closed = true;
       try {
-        input.fileHandleForWriting.closeFile();
+        void input.fileHandleForWriting.closeFile;
       } catch {
         /* Already closed. */
       }
@@ -140,7 +140,9 @@ globalThis.StickerHostProcess = (() => {
       }
       if (launched && task.isRunning) {
         forced = true;
-        attempt(() => task.terminate());
+        attempt(() => {
+          void task.terminate;
+        });
       }
       const terminated = Date.now() + 1000;
       while (launched && task.isRunning && Date.now() < terminated) {
@@ -164,8 +166,12 @@ globalThis.StickerHostProcess = (() => {
       delete channels[String(out.handle.fileDescriptor)];
       delete channels[String(err.handle.fileDescriptor)];
       for (const action of [
-        () => out.handle.closeFile(),
-        () => err.handle.closeFile(),
+        () => {
+          void out.handle.closeFile;
+        },
+        () => {
+          void err.handle.closeFile;
+        },
         () => out.buffer.setLength(0),
         () => err.buffer.setLength(0),
       ])
@@ -213,7 +219,7 @@ globalThis.StickerHostProcess = (() => {
         throw new Error("rpc_timeout");
       },
       collect(deadline) {
-        input.fileHandleForWriting.closeFile();
+        void input.fileHandleForWriting.closeFile;
         while (
           (task.isRunning || !out.eof || !err.eof) &&
           Date.now() < deadline

@@ -50,15 +50,19 @@ test("post-launch reader failure cleans its own child even if the run-loop pump 
     terminated = 0,
     closed = 0;
   const task = {
-    launch() {
+    get launch() {
       running = true;
+
+      return undefined;
     },
     get isRunning() {
       return running;
     },
-    terminate() {
+    get terminate() {
       terminated++;
       running = false;
+
+      return undefined;
     },
   };
   const dollar = (value) => ({
@@ -75,16 +79,20 @@ test("post-launch reader failure cleans its own child even if the run-loop pump 
         return {
           fileHandleForReading: {
             fileDescriptor: 100 + i,
-            readInBackgroundAndNotify() {
+            get readInBackgroundAndNotify() {
               throw Error("reader failure");
             },
-            closeFile() {
+            get closeFile() {
               closed++;
+
+              return undefined;
             },
           },
           fileHandleForWriting: {
-            closeFile() {
+            get closeFile() {
               closed++;
+
+              return undefined;
             },
           },
         };
@@ -127,4 +135,106 @@ test("post-launch reader failure cleans its own child even if the run-loop pump 
   assert.equal(running, false);
   assert.equal(terminated, 1);
   assert.ok(closed >= 3);
+});
+test("actual transport uses getter invocation for zero-argument Objective-C selectors", () => {
+  let running = false,
+    launched = 0,
+    reads = 0,
+    closes = 0,
+    pipeIndex = 0;
+  const task = {
+    get launch() {
+      launched++;
+      running = true;
+
+      return undefined;
+    },
+    get isRunning() {
+      return running;
+    },
+    get terminate() {
+      running = false;
+
+      return undefined;
+    },
+  };
+  const dollar = (value) => ({
+    dataUsingEncoding() {
+      return { length: value.length };
+    },
+  });
+  Object.assign(dollar, {
+    NSUTF8StringEncoding: 4,
+    NSTask: { alloc: { init: task } },
+    NSPipe: {
+      get pipe() {
+        const i = pipeIndex++;
+        return {
+          fileHandleForReading: {
+            fileDescriptor: 100 + i,
+            get readInBackgroundAndNotify() {
+              reads++;
+
+              return undefined;
+            },
+            get closeFile() {
+              closes++;
+
+              return undefined;
+            },
+          },
+          fileHandleForWriting: {
+            writeData() {},
+            get closeFile() {
+              closes++;
+              running = false;
+
+              return undefined;
+            },
+          },
+        };
+      },
+    },
+    NSMutableData: {
+      get data() {
+        return { setLength() {} };
+      },
+    },
+    NSNotificationCenter: {
+      defaultCenter: {
+        addObserverSelectorNameObject() {},
+        removeObserver() {},
+      },
+    },
+  });
+  const sandbox = {
+    $: dollar,
+    ObjC: {
+      import() {},
+      registerSubclass() {
+        dollar.StickerInstallPipeObserverV1 = { alloc: { init: {} } };
+      },
+      bindFunction() {},
+    },
+  };
+  vm.createContext(sandbox);
+  vm.runInContext(
+    readFileSync(
+      new URL("../packaging/agent-install/process.jxa.js", import.meta.url),
+      "utf8",
+    ),
+    sandbox,
+  );
+  const transport = sandbox.StickerHostProcess.spawn(
+    "/fixture/cli",
+    [],
+    {},
+    "/fixture",
+  );
+  transport.write("message\n");
+  transport.close();
+  assert.equal(launched, 1);
+  assert.equal(reads, 2);
+  assert.equal(closes, 3);
+  assert.equal(running, false);
 });
