@@ -93,6 +93,7 @@ if (phase === "initialize") {
   assert.deepEqual(
     state.issues.map((i) => i.title).sort(),
     [
+      "Container history fixture",
       "Container shared resource reference",
       "Container template provenance fixture",
       "Persisted container issue",

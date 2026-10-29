@@ -3,7 +3,11 @@ import type { SQLInputValue, SQLOutputValue } from "node:sqlite";
 import { openDatabase } from "./db.js";
 import { DomainError } from "./domain-error.js";
 import { issueSchema, projectSchema } from "./response-schemas.js";
-import type { Actor } from "./types.js";
+import {
+  issueFieldPatchSchema,
+  type IssueFieldPatch,
+} from "./contracts/history.js";
+import type { Actor, Issue } from "./types.js";
 const tables = new Set([
   "projects",
   "versions",
@@ -20,7 +24,19 @@ const tables = new Set([
   "template_operations",
   "issue_creation_operations",
 ]);
+export interface IssueMutationMetadata {
+  action: string;
+  detail: string;
+  sourceChangeId?: string;
+}
 export class StoreContext {
+  onIssueMutation?: (
+    actor: Actor,
+    before: Issue | null,
+    after: Issue,
+    activityId: string,
+    sourceChangeId?: string,
+  ) => void;
   readonly db;
   constructor(
     dataDir: string,
@@ -130,8 +146,9 @@ export class StoreContext {
     return issue;
   }
   activity(actor: Actor, issueId: string, action: string, detail: string) {
+    const id = randomUUID();
     this.insert("activity", {
-      id: randomUUID(),
+      id,
       issueId,
       action,
       detail,
@@ -139,5 +156,44 @@ export class StoreContext {
       authorName: actor.name,
       createdAt: this.now(),
     });
+    return id;
+  }
+  issueActivity(
+    actor: Actor,
+    before: Issue | null,
+    after: Issue,
+    metadata: IssueMutationMetadata,
+  ) {
+    if (!this.db.isTransaction)
+      throw new Error("Issue mutation requires an existing transaction.");
+    const id = this.activity(actor, after.id, metadata.action, metadata.detail);
+    this.onIssueMutation?.(actor, before, after, id, metadata.sourceChangeId);
+  }
+  /** Shared write seam, inside the caller's transaction/savepoint; never starts a nested transaction. */
+  changeIssue(
+    actor: Actor,
+    before: Issue,
+    patch: IssueFieldPatch,
+    metadata: IssueMutationMetadata,
+  ): Issue {
+    if (!this.db.isTransaction)
+      throw new Error("Issue mutation requires an existing transaction.");
+    const current = this.writableIssue(actor, before.id);
+    if (current.revision !== before.revision)
+      throw new DomainError(
+        409,
+        "REVISION_CONFLICT",
+        "이슈가 변경되었습니다. 최신 내용을 확인하세요.",
+      );
+    const { labels, ...fields } = issueFieldPatchSchema.parse(patch);
+    this.update("issues", before.id, {
+      ...fields,
+      ...(labels ? { labels: JSON.stringify(labels) } : {}),
+      revision: before.revision + 1,
+      updatedAt: this.now(),
+    });
+    const after = this.issue(actor, before.id);
+    this.issueActivity(actor, before, after, metadata);
+    return after;
   }
 }

@@ -13,3 +13,5 @@ createRoot(root).render(
 import "./features/relations/relations.css";
 
 import "./features/releases/releases.css";
+
+import "./features/history/history.css";

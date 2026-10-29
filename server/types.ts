@@ -132,3 +132,11 @@ export type {
   TemplateDefaults,
   TemplateField,
 } from "./contracts/templates.js";
+
+export type {
+  HistorySummary,
+  HistoryDetail,
+  HistoryField,
+  HistoryFieldChange,
+  RestorePreview,
+} from "./contracts/history.js";

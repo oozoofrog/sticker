@@ -308,7 +308,7 @@ const throughV7 = {
     ],
   },
 } as const;
-export const schemaManifests = {
+const throughV8 = {
   ...throughV7,
   8: {
     ...throughV7[7],
@@ -343,6 +343,32 @@ export const schemaManifests = {
     ],
   },
 } as const;
+export const schemaManifests = {
+  ...throughV8,
+  9: {
+    ...throughV8[8],
+    issue_changes: [
+      "id",
+      "issueId",
+      "revisionBefore",
+      "revisionAfter",
+      "authorId",
+      "authorName",
+      "createdAt",
+      "action",
+      "sourceChangeId",
+      "unavailableReason",
+    ],
+    issue_field_changes: ["changeId", "field", "beforeJson", "afterJson"],
+    issue_restore_operations: [
+      "actorId",
+      "operationId",
+      "issueId",
+      "payload",
+      "changeId",
+    ],
+  },
+} as const;
 export type SchemaVersion = keyof typeof schemaManifests;
 export function isSchemaVersion(value: unknown): value is SchemaVersion {
   return (
@@ -353,6 +379,7 @@ export function isSchemaVersion(value: unknown): value is SchemaVersion {
     value === 5 ||
     value === 6 ||
     value === 7 ||
-    value === 8
+    value === 8 ||
+    value === 9
   );
 }
