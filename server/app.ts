@@ -4,6 +4,7 @@ import { registerHistoryRoutes } from "./routes/history.js";
 import { registerGithubRoutes } from "./routes/github.js";
 import type { GithubProvider } from "./features/github.js";
 import { registerTemplateRoutes } from "./routes/templates.js";
+import { registerMcpSettingsRoutes } from "./routes/mcp-settings.js";
 import express, { type ErrorRequestHandler, type Request } from "express";
 import multer from "multer";
 import { mkdirSync, existsSync, unlinkSync } from "node:fs";
@@ -129,6 +130,7 @@ export function createApp(config: AppConfig) {
   });
   registerHistoryRoutes(app, store.history);
   registerGithubRoutes(app, store.github);
+  registerMcpSettingsRoutes(app, () => auth.directory());
   registerTemplateRoutes(app, store.templates);
   registerResourceRoutes(app, store.resources, files);
   registerSessionRoutes(app, store.sessions);
