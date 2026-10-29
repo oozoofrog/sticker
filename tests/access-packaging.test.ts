@@ -289,14 +289,18 @@ void test("running Mac app identity handles NFC/NFD and filesystem aliases", asy
           sharedWorkspace: {
             runningApplications: {
               count: 1,
-              objectAtIndex: () => ({ bundleURL: { path: actual } }),
+              objectAtIndex: () => ({
+                bundleURL: { isNil: () => false, path: actual },
+              }),
             },
           },
         },
         NSFileManager: {
           defaultManager: {
             attributesOfItemAtPathError: (path: string) => ({
+              isNil: () => false,
               objectForKey: (key: string) => ({
+                isNil: () => false,
                 stringValue:
                   key === "NSFileSystemNumber"
                     ? "1"
@@ -358,4 +362,105 @@ void test("Mac quit exits only its idle process and defers while a service opera
   context.activeTask = null;
   context.quit();
   assert.equal(exits, 1);
+});
+
+void test("Mac identity rejects bridged nil targets and skips nil/non-string running bundle paths", async () => {
+  const { runInNewContext } = await import("node:vm");
+  const nil = Object.assign(() => undefined, { isNil: () => true });
+  const number = (value: string) => ({
+    isNil: () => false,
+    stringValue: value,
+  });
+  const attributes = {
+    isNil: () => false,
+    objectForKey: (key: string) =>
+      number(key === "NSFileSystemNumber" ? "1" : "9007199254740993"),
+  };
+  const applications = [
+    { bundleURL: nil },
+    { bundleURL: { isNil: () => false, path: nil } },
+    { bundleURL: { isNil: () => false, path: 123 } },
+    {
+      bundleURL: { isNil: () => false, path: "/tmp/한글.app".normalize("NFD") },
+    },
+  ];
+  const context: {
+    run?: (args: string[]) => string;
+    ObjC: unknown;
+    $: unknown;
+  } = {
+    ObjC: { import: () => undefined, unwrap: (value: unknown) => value },
+    $: {
+      NSWorkspace: {
+        sharedWorkspace: {
+          runningApplications: {
+            count: applications.length,
+            objectAtIndex: (index: number) => applications[index],
+          },
+        },
+      },
+      NSFileManager: {
+        defaultManager: {
+          attributesOfItemAtPathError: (path: string) =>
+            path === "/missing.app" ? nil : attributes,
+        },
+      },
+    },
+  };
+  runInNewContext(
+    readFileSync(join(root, "packaging/macos/is-running.jxa"), "utf8"),
+    context,
+  );
+  assert.ok(context.run);
+  assert.equal(context.run(["/missing.app"]), "unknown");
+  assert.equal(context.run(["/tmp/한글.app"]), "running");
+  assert.equal(context.run(["relative.app"]), "unknown");
+});
+
+void test("nonmodal diagnostic queues no second start while busy or quitting", async () => {
+  const { runInNewContext } = await import("node:vm");
+  let start: (() => void) | undefined;
+  const events: string[] = [];
+  const context: {
+    pending?: string | null;
+    task?: object | null;
+    quitRequested?: boolean;
+    ObjC: unknown;
+    trace: (event: string) => void;
+  } = {
+    ObjC: {
+      import: () => undefined,
+      bindFunction: () => undefined,
+      registerSubclass: (definition: {
+        methods: Record<string, { implementation: () => void }>;
+      }) => {
+        start = definition.methods["start:"].implementation;
+      },
+    },
+    trace: (event: string) => {
+      events.push(event);
+    },
+  };
+  runInNewContext(
+    readFileSync(
+      join(root, "tests/fixtures/access-quit-probe/nonmodal.jxa"),
+      "utf8",
+    ),
+    context,
+  );
+  assert.ok(start);
+  start();
+  assert.equal(context.pending, "start");
+  context.pending = null;
+  context.task = {};
+  start();
+  assert.equal(context.pending, null);
+  context.task = null;
+  context.quitRequested = true;
+  start();
+  assert.equal(context.pending, null);
+  assert.equal(
+    events.filter((event) => event === "button-start-queued").length,
+    1,
+  );
 });

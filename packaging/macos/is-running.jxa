@@ -1,23 +1,41 @@
 ObjC.import('AppKit');
 ObjC.import('Foundation');
+// ObjC nil proxies are truthy functions in JXA; JavaScript truthiness is not a nil check.
+function nativeMissing(value) {
+  return value === undefined || value === null || typeof value.isNil !== 'function' || value.isNil();
+}
+function nativeString(value) {
+  if (typeof value === 'string') return value;
+  if (nativeMissing(value)) return null;
+  var unwrapped = ObjC.unwrap(value);
+  return typeof unwrapped === 'string' ? unwrapped : null;
+}
+function absolutePath(value) {
+  var path = nativeString(value);
+  return path && path[0] === '/' && !/[\r\n\t\0]/.test(path) ? path : null;
+}
 function fileIdentity(path) {
+  if (!absolutePath(path)) return null;
   var attributes = $.NSFileManager.defaultManager.attributesOfItemAtPathError(path, null);
-  if (!attributes) return null;
+  if (nativeMissing(attributes)) return null;
   var volume = attributes.objectForKey('NSFileSystemNumber');
   var file = attributes.objectForKey('NSFileSystemFileNumber');
-  if (!volume || !file) return null;
-  return ObjC.unwrap(volume.stringValue) + ':' + ObjC.unwrap(file.stringValue);
+  if (nativeMissing(volume) || nativeMissing(file)) return null;
+  var volumeText = nativeString(volume.stringValue), fileText = nativeString(file.stringValue);
+  if (!volumeText || !fileText || !/^[0-9]+$/.test(volumeText) || !/^[0-9]+$/.test(fileText)) return null;
+  return volumeText + ':' + fileText;
 }
 function run(argv) {
-  if (argv.length !== 1) return 'unknown';
+  if (argv.length !== 1 || !absolutePath(argv[0])) return 'unknown';
   var targetIdentity = fileIdentity(argv[0]);
   if (!targetIdentity) return 'unknown';
   var normalized = argv[0].normalize('NFC');
   var applications = $.NSWorkspace.sharedWorkspace.runningApplications;
   for (var i = 0; i < applications.count; i++) {
     var url = applications.objectAtIndex(i).bundleURL;
-    if (!url) continue;
-    var path = ObjC.unwrap(url.path);
+    if (nativeMissing(url)) continue;
+    var path = absolutePath(url.path);
+    if (!path) continue;
     if (path.normalize('NFC') === normalized || fileIdentity(path) === targetIdentity) return 'running';
   }
   return 'stopped';

@@ -1,0 +1,66 @@
+// Diagnostic fixture only. Uses a file-gated dummy process, never Docker.
+ObjC.import('AppKit');
+ObjC.bindFunction('exit', ['void', ['int']]);
+var window = null, label = null, target = null;
+var pending = null, task = null, quitRequested = false;
+ObjC.registerSubclass({
+  name: 'StickerQuitProbeTarget',
+  superclass: 'NSObject',
+  methods: {
+    'start:': { types: ['void', ['id']], implementation: function () {
+      if (!task && !pending && !quitRequested) { pending = 'start'; trace('button-start-queued'); }
+      else trace('button-start-ignored');
+    } },
+    'closeProbe:': { types: ['void', ['id']], implementation: function () { pending = 'quit'; trace('button-quit-queued'); } }
+  }
+});
+function run() {
+  trace('run-enter');
+  if (!window) {
+    window = $.NSWindow.alloc.initWithContentRectStyleMaskBackingDefer($.NSMakeRect(0, 0, 420, 140), 1, $.NSBackingStoreBuffered, false);
+    window.title = 'Sticker quit probe B';
+    label = $.NSTextField.alloc.initWithFrame($.NSMakeRect(20, 90, 380, 30));
+    label.stringValue = 'Idle · diagnostic only'; label.editable = false; label.bezeled = false; label.drawsBackground = false;
+    window.contentView.addSubview(label);
+    target = $.StickerQuitProbeTarget.alloc.init;
+    var start = $.NSButton.alloc.initWithFrame($.NSMakeRect(20, 20, 180, 40));
+    start.title = 'Start dummy task'; start.target = target; start.action = 'start:';
+    window.contentView.addSubview(start);
+    var close = $.NSButton.alloc.initWithFrame($.NSMakeRect(220, 20, 180, 40));
+    close.title = 'Quit probe'; close.target = target; close.action = 'closeProbe:';
+    window.contentView.addSubview(close);
+    window.center;
+  }
+  window.makeKeyAndOrderFront(null);
+  trace('run-return');
+}
+function reopen() { trace('reopen-enter'); if (!window) run(); else window.makeKeyAndOrderFront(null); trace('reopen-return'); }
+function idle() {
+  trace('idle-enter');
+  if (pending === 'quit') { pending = null; quit(); }
+  if (pending === 'start' && !task && !quitRequested) {
+    pending = null;
+    task = $.NSTask.alloc.init;
+    task.launchPath = '/bin/bash'; task.arguments = [probeDirectory() + '/dummy.sh'];
+    task.standardInput = $.NSFileHandle.fileHandleWithNullDevice;
+    task.standardOutput = $.NSFileHandle.fileHandleWithNullDevice;
+    task.standardError = $.NSFileHandle.fileHandleWithNullDevice;
+    task.launch;
+    label.stringValue = 'Dummy task running';
+    trace('task-launched');
+  }
+  if (task && !task.running) {
+    trace('task-complete'); task = null;
+    label.stringValue = 'Idle · diagnostic only';
+    trace('task-cleanup');
+    if (quitRequested) { trace('exit-after-task'); $.exit(0); }
+  }
+  trace('idle-return');
+  return 1;
+}
+function quit() {
+  trace('quit-enter');
+  quitRequested = true;
+  if (task) { trace('quit-deferred'); return; }
+  trace('exit-idle'); $.exit(0);
+}
