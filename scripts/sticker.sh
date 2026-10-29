@@ -15,6 +15,8 @@ case "$verb" in status|open|start|stop) ;; *) early invalid_invocation unknown 6
 script_dir=${BASH_SOURCE[0]%/*}
 [[ "$script_dir" != "${BASH_SOURCE[0]}" ]] || script_dir=.
 if ! cd "$script_dir/.." 2>/dev/null; then early installation_unavailable unknown 1; fi
+# POSIX/older Bash can exit on a missing source special builtin even inside if.
+if [[ ! -f scripts/host-tools.sh || ! -r scripts/host-tools.sh ]]; then early installation_unavailable unknown 1; fi
 if ! source scripts/host-tools.sh 2>/dev/null; then early installation_unavailable unknown 1; fi
 if ! sticker_require_commands access mktemp rm sleep wc cksum mkdir rmdir id cat uname >/dev/null 2>&1; then early host_tools_missing unknown 1; fi
 scratch=$(mktemp -d "${TMPDIR:-/tmp}/sticker-access.XXXXXX" 2>/dev/null) || early temporary_storage_unavailable unknown 1

@@ -301,3 +301,25 @@ test("missing installation helper returns JSON without exposing its path", () =>
     f.close();
   }
 });
+
+test("POSIX Bash missing helper emits JSON before the special builtin can terminate the shell", () => {
+  const f = fixture();
+  try {
+    rmSync(join(f.root, "scripts/host-tools.sh"));
+    const result = spawnSync(
+      "bash",
+      ["--posix", join(f.root, "scripts/sticker.sh"), "status", "--json"],
+      { encoding: "utf8", env: process.env },
+    );
+    assert.equal(result.status, 1);
+    assert.match(result.stdout, /^\{"schemaVersion":1,/);
+    const value = JSON.parse(result.stdout);
+    assert.equal(value.reason, "installation_unavailable");
+    assert.equal(value.state, "unknown");
+    assert.equal(value.action, "failed");
+    assert.ok(!result.stderr.includes(f.root));
+    assert.equal(existsSync(f.log), false);
+  } finally {
+    f.close();
+  }
+});

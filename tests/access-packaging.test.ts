@@ -699,3 +699,90 @@ void test("VM completion discards stale health and cleans up when native output 
   assert.equal(context.snapshot, "");
   assert.equal(cleaned, 1);
 });
+
+void test("VM cwd diagnostic stops on first timeout, sends TERM only once, and never claims running-child cleanup", async () => {
+  const { runInNewContext } = await import("node:vm");
+  let now = 11000;
+  let terms = 0;
+  let closes = 0;
+  let running = true;
+  const events: string[] = [];
+  const nil = Object.assign(() => undefined, { isNil: () => true });
+  const context: {
+    observe?: () => void;
+    active?: object | null;
+    halted?: boolean;
+    index?: number;
+    trace?: (event: string) => void;
+    ObjC: unknown;
+    $: unknown;
+    Date: unknown;
+  } = {
+    ObjC: {
+      import: () => undefined,
+      bindFunction: () => undefined,
+      registerSubclass: () => undefined,
+    },
+    $: {
+      NSFileManager: {
+        defaultManager: { attributesOfItemAtPathError: () => nil },
+      },
+    },
+    Date: { now: () => now },
+  };
+  runInNewContext(
+    readFileSync(
+      join(root, "tests/fixtures/access-cwd-probe/probe.jxa"),
+      "utf8",
+    ),
+    context,
+  );
+  assert.ok(context.observe);
+  context.trace = (event: string) => {
+    events.push(event);
+  };
+  context.active = {
+    spec: { id: "fixture" },
+    task: {
+      get running() {
+        return running;
+      },
+      processIdentifier: 123,
+      terminationStatus: 0,
+      get terminate() {
+        terms++;
+        return undefined;
+      },
+    },
+    handle: {
+      get closeFile() {
+        closes++;
+        return undefined;
+      },
+    },
+    output: "/fixture/output",
+    startedAt: 0,
+    termAt: null,
+    markerSeen: false,
+    cleanupReported: false,
+  };
+  context.observe();
+  assert.equal(terms, 1);
+  assert.equal(context.halted, true);
+  assert.equal(closes, 0);
+  now = 17000;
+  context.observe();
+  context.observe();
+  assert.equal(terms, 1);
+  assert.equal(closes, 0);
+  assert.equal(
+    events.filter((event) => event === "cleanup-unconfirmed-stop").length,
+    1,
+  );
+  assert.ok(context.active);
+  running = false;
+  context.observe();
+  assert.equal(context.active, null);
+  assert.equal(closes, 1);
+  assert.equal(context.index, 0);
+});
