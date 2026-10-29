@@ -332,17 +332,22 @@ void test("running Mac app identity handles NFC/NFD and filesystem aliases", asy
   assert.equal(running("/tmp/Sticker.app", "/tmp/Other.app", false), "stopped");
 });
 
-void test("Mac quit exits only its idle process and defers while a service operation is active", async () => {
+void test("VM direct quit handler records busy requests and exits only when idle", async () => {
   const { runInNewContext } = await import("node:vm");
   let exits = 0;
   const context: {
     quit?: () => void;
     activeTask?: object | null;
     shouldQuit?: boolean;
+    pendingAction?: string | null;
     ObjC: unknown;
     $: unknown;
   } = {
-    ObjC: { import: () => undefined, bindFunction: () => undefined },
+    ObjC: {
+      import: () => undefined,
+      bindFunction: () => undefined,
+      registerSubclass: () => undefined,
+    },
     $: {
       exit: (status: number) => {
         assert.equal(status, 0);
@@ -356,11 +361,20 @@ void test("Mac quit exits only its idle process and defers while a service opera
   );
   assert.ok(context.quit);
   context.activeTask = {};
-  context.quit();
+  assert.throws(
+    () => context.quit?.(),
+    (error: unknown) =>
+      typeof error === "object" &&
+      error !== null &&
+      "errorNumber" in error &&
+      error.errorNumber === -128,
+  );
   assert.equal(exits, 0);
   assert.equal(context.shouldQuit, true);
   context.activeTask = null;
+  context.pendingAction = "start";
   context.quit();
+  assert.equal(context.pendingAction, null);
   assert.equal(exits, 1);
 });
 
@@ -522,4 +536,166 @@ void test("diagnostic C separates internal quit from experimental AppleEvent can
   context.task = null;
   context.quit();
   assert.equal(exits, 1);
+});
+
+void test("VM nonmodal controller returns from run, confirms stop inline, and rejects repeated queued actions", async () => {
+  const { runInNewContext } = await import("node:vm");
+  const context: {
+    run?: () => void;
+    reopen?: () => void;
+    requestAction?: (action: string) => void;
+    pendingAction?: string | null;
+    confirmingStop?: boolean;
+    activeTask?: object | null;
+    ensureWindow?: () => void;
+    render?: () => void;
+    window?: object;
+    ObjC: unknown;
+    $: unknown;
+  } = {
+    ObjC: {
+      import: () => undefined,
+      bindFunction: () => undefined,
+      registerSubclass: () => undefined,
+    },
+    $: {},
+  };
+  runInNewContext(
+    readFileSync(join(root, "packaging/macos/Sticker.jxa"), "utf8"),
+    context,
+  );
+  assert.ok(context.requestAction);
+  assert.ok(context.run);
+  assert.ok(context.reopen);
+  let shown = 0;
+  context.ensureWindow = () => undefined;
+  context.render = () => undefined;
+  context.window = {
+    makeKeyAndOrderFront: () => {
+      shown++;
+    },
+  };
+  context.run();
+  assert.equal(context.pendingAction, "status");
+  context.requestAction("start");
+  assert.equal(context.pendingAction, "status");
+  context.reopen();
+  assert.equal(shown, 2);
+  assert.equal(context.pendingAction, "status");
+  context.pendingAction = null;
+  context.requestAction("stop");
+  assert.equal(context.confirmingStop, true);
+  assert.equal(context.pendingAction, null);
+  context.requestAction("cancel-stop");
+  assert.equal(context.confirmingStop, false);
+  assert.equal(context.pendingAction, null);
+  context.requestAction("stop");
+  context.requestAction("confirm-stop");
+  assert.equal(context.pendingAction, "stop");
+  context.requestAction("confirm-stop");
+  assert.equal(context.pendingAction, "stop");
+  context.pendingAction = null;
+  context.activeTask = {};
+  context.requestAction("start");
+  assert.equal(context.pendingAction, null);
+});
+
+void test("VM idle polls a live child once, cleans a completed child before exit, and reopening refreshes stale state", async () => {
+  const { runInNewContext } = await import("node:vm");
+  const order: string[] = [];
+  const context: {
+    idle?: () => number;
+    reopen?: () => void;
+    requestAppQuit?: () => void;
+    activeTask?: { task: object };
+    pendingAction?: string | null;
+    snapshot?: string;
+    ensureWindow?: () => void;
+    render?: () => void;
+    finishOperation?: () => void;
+    window?: object;
+    ObjC: unknown;
+    $: unknown;
+  } = {
+    ObjC: {
+      import: () => undefined,
+      bindFunction: () => undefined,
+      registerSubclass: () => undefined,
+    },
+    $: {
+      exit: () => {
+        order.push("exit");
+      },
+    },
+  };
+  runInNewContext(
+    readFileSync(join(root, "packaging/macos/Sticker.jxa"), "utf8"),
+    context,
+  );
+  assert.ok(context.idle);
+  assert.ok(context.requestAppQuit);
+  assert.ok(context.reopen);
+  context.render = () => undefined;
+  context.ensureWindow = () => undefined;
+  context.window = { makeKeyAndOrderFront: () => undefined };
+  context.snapshot = "old snapshot";
+  context.reopen();
+  assert.equal(context.pendingAction, "status");
+  context.pendingAction = null;
+  let polls = 0;
+  let running = true;
+  context.activeTask = {
+    task: {
+      get running() {
+        polls++;
+        return running;
+      },
+    },
+  };
+  context.finishOperation = () => {
+    order.push("cleanup");
+  };
+  assert.equal(context.idle(), 1);
+  assert.equal(polls, 1);
+  context.requestAppQuit();
+  assert.deepEqual(order, []);
+  running = false;
+  assert.equal(context.idle(), 1);
+  assert.deepEqual(order, ["cleanup", "exit"]);
+});
+
+void test("VM completion discards stale health and cleans up when native output metadata is nil", async () => {
+  const { runInNewContext } = await import("node:vm");
+  const nil = Object.assign(() => undefined, { isNil: () => true });
+  let cleaned = 0;
+  const context: {
+    finishOperation?: (operation: object) => void;
+    cleanupOperation?: () => void;
+    snapshot?: string;
+    ObjC: unknown;
+    $: unknown;
+  } = {
+    ObjC: {
+      import: () => undefined,
+      bindFunction: () => undefined,
+      registerSubclass: () => undefined,
+    },
+    $: {
+      NSFileManager: {
+        defaultManager: { attributesOfItemAtPathError: () => nil },
+      },
+    },
+  };
+  runInNewContext(
+    readFileSync(join(root, "packaging/macos/Sticker.jxa"), "utf8"),
+    context,
+  );
+  assert.ok(context.finishOperation);
+  context.cleanupOperation = () => {
+    cleaned++;
+  };
+  context.snapshot = "previously ready";
+  context.finishOperation({ output: "/fixture/missing" });
+  assert.equal(context.snapshot, "");
+  assert.equal(cleaned, 1);
 });

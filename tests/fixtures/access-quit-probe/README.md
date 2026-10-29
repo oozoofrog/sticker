@@ -3,15 +3,16 @@
 Use only a temporary Mac directory. No Docker command, production install, credential, service, or user data is accessed. The only task is `dummy.sh`, which writes markers and waits for its own `release-gate` file.
 
 1. Read the actual Mac `man osacompile` and `/usr/bin/osacompile -h` (the archived web manual was unavailable), and confirm this version uses `-s` for a stay-open applet. If not, stop and report the actual option; do not infer it from successful plain compilation.
-2. From this checkout run `bash tests/fixtures/access-quit-probe/build.sh "$TMPDIR/sticker-quit-probe-UNIQUE"` with a **new absolute path**. This only builds and ad-hoc verifies A/Probe.app and B/Probe.app. It does not launch either app.
+2. From this checkout run `bash tests/fixtures/access-quit-probe/build.sh "$TMPDIR/sticker-quit-probe-UNIQUE"` with a **new absolute path**. This only builds and ad-hoc verifies A/Probe.app, B/Probe.app, and C/Probe.app. It does not launch either app.
 3. Launch **one app at a time**, record its exact PID/bundle path, and use that selected app for normal OS Quit/Cmd-Q. Avoid matching another app by a shared generic name. Trace is `<base>/A/trace.log` or `B/trace.log`.
 
-## A: current product run/modal structure, instrumented
+## A: current product snapshot, instrumented
 
-Only `run-enter` and first-line `quit-enter` tracing is added to the current product source. Its selected installation is a temporary dummy fixture, not a real project. Initial status is a static known JSON with no URL.
+The builder copies the **current checkout's** product source and adds first-line `run-enter` and `quit-enter` traces. After the nonmodal product migration, A is also nonmodal; it no longer reproduces the old selection-dialog loop. Its source installation is still a temporary dummy fixture, never a real project.
 
-- In the selection dialog, send normal OS quit. Record whether `quit-enter` appears and whether the PID exits. No trace means the handler was not dispatched; direct function unit-test success does not answer this question.
-- Fresh process, choose 서비스 시작. After `A/task-started` appears, send OS quit and inspect trace **before** releasing the gate. Then `touch <base>/A/release-gate` and observe task-completed/PID/trace. Do not kill the dummy while diagnosing dispatch.
+Historical evidence at remote b74f96a/c760412: the then-current A had the long run/Standard Additions modal structure; OS quit did not reach `quit-enter` until internal dismissal. That observation is retained as historical evidence, not an expected result of rebuilding A from the current tree.
+
+Final product validation should use the final installed product app for all controls, inline stop confirmation, X hide/reopen, OS idle/busy quit, strict signature and running-app identity. Reproducing the old A dispatch blockage is not a release gate. If A is used for a new diagnosis, record the exact source commit and actual current behavior rather than applying the historical modal expectation.
 
 ## B: nonmodal stay-open prototype
 

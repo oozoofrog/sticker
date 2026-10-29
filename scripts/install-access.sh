@@ -97,7 +97,7 @@ else
     [[ "$(/usr/bin/osascript -l JavaScript "$ROOT/packaging/macos/is-running.jxa" "$target")" = stopped ]] || fail '기존 스티커 접근 앱을 종료한 뒤 설치하세요.'
   fi
   cat "$ROOT/packaging/macos/contract.js" "$ROOT/packaging/macos/Sticker.jxa" > "$stage/Sticker.js"
-  /usr/bin/osacompile -l JavaScript -o "$stage/Sticker.app" "$stage/Sticker.js" >/dev/null
+  /usr/bin/osacompile -s -l JavaScript -o "$stage/Sticker.app" "$stage/Sticker.js" >/dev/null
   /usr/bin/plutil -replace CFBundleIdentifier -string org.oozoofrog.sticker.access "$stage/Sticker.app/Contents/Info.plist"
   manifest > "$stage/Sticker.app/Contents/Resources/sticker-source"
   mkdir "$stage/Sticker.app/Contents/Resources/bin"
