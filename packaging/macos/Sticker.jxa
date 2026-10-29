@@ -3,9 +3,10 @@ ObjC.import('Foundation');
 ObjC.import('AppKit');
 ObjC.bindFunction('exit', ['void', ['int']]);
 var activeTask = null, pendingAction = null, confirmingStop = false, shouldQuit = false;
-var window = null, statusLabel = null, target = null, buttons = [];
-var confirmButton = null, cancelButton = null, snapshot = '';
-var actions = ['open', 'status', 'start', 'stop', 'quit'];
+var window = null, statusLabel = null, target = null, statusItem = null, menu = null;
+var menuItems = [], problemAction = null, snapshot = '', lastChecked = '';
+var openAfterCurrent = false;
+var actions = ['open', 'status', 'start', 'stop', 'quit', 'confirm-stop', 'cancel-stop', 'start-open', 'hide'];
 
 function nativeMissing(value) {
   return value === null || value === undefined || typeof value.isNil !== 'function' || value.isNil();
@@ -26,61 +27,115 @@ function installation() {
   return { root: lines[1], bin: resource + '/bin', context: lines[3], project: lines[4] };
 }
 ObjC.registerSubclass({
-  name: 'StickerAccessTarget', superclass: 'NSObject', protocols: ['NSWindowDelegate'],
+  name: 'StickerAccessTarget', superclass: 'NSObject', protocols: ['NSWindowDelegate', 'NSMenuDelegate'],
   methods: {
     'perform:': { types: ['void', ['id']], implementation: function (sender) {
-      var index = Number(sender.tag);
-      requestAction(index === 5 ? 'confirm-stop' : index === 6 ? 'cancel-stop' : actions[index]);
+      requestAction(actions[Number(sender.tag)]);
+    } },
+    'menuWillOpen:': { types: ['void', ['id']], implementation: function () {
+      // Show the last observation; explicit refresh avoids blocking menu tracking.
+      render();
     } },
     'windowShouldClose:': { types: ['bool', ['id']], implementation: function (sender) {
-      // Standard Mac close hides this controller, not the service or active operation.
       sender.orderOut(null); return false;
     } }
   }
 });
-function makeButton(title, actionIndex, x, y, width) {
-  var button = $.NSButton.alloc.initWithFrame($.NSMakeRect(x, y, width, 34));
-  button.title = title; button.bezelStyle = 1; button.tag = actionIndex;
-  button.target = target; button.action = 'perform:';
-  window.contentView.addSubview(button);
-  return button;
+function addItem(owner, title, action) {
+  var item = $.NSMenuItem.alloc.initWithTitleActionKeyEquivalent(title, action ? 'perform:' : '', '');
+  if (action) { item.target = target; item.tag = actions.indexOf(action); }
+  else item.enabled = false;
+  owner.addItem(item);
+  return item;
 }
-function ensureWindow() {
+function ensureMenu() {
+  if (statusItem) return;
+  target = $.StickerAccessTarget.alloc.init;
+  statusItem = $.NSStatusBar.systemStatusBar.statusItemWithLength($.NSVariableStatusItemLength);
+  statusItem.button.title = '스티커';
+  statusItem.button.setAccessibilityLabel('스티커');
+  menu = $.NSMenu.alloc.initWithTitle('스티커'); menu.autoenablesItems = false;
+  menu.delegate = target;
+  menuItems = [addItem(menu, '스티커 열기', 'open'), addItem(menu, '상태 미확인', null), addItem(menu, '새로고침', 'status'), addItem(menu, '서비스 시작', 'start')];
+  var stop = addItem(menu, '서비스 중지', null);
+  var confirmation = $.NSMenu.alloc.initWithTitle('서비스 중지'); confirmation.autoenablesItems = false;
+  // A submenu is the explicit confirmation; opening it performs no operation.
+  menuItems.push(stop, addItem(confirmation, '중지 확인', 'confirm-stop'), addItem(confirmation, '취소', 'cancel-stop'));
+  stop.submenu = confirmation;
+  menuItems.push(addItem(menu, '앱 종료', 'quit'));
+  statusItem.menu = menu;
+}
+function makeProblemButton(title, action, x) {
+  var button = $.NSButton.alloc.initWithFrame($.NSMakeRect(x, 18, 140, 32));
+  button.title = title; button.bezelStyle = 1; button.target = target;
+  button.tag = actions.indexOf(action); button.action = 'perform:';
+  window.contentView.addSubview(button); return button;
+}
+function ensureProblem() {
   if (window) return;
-  window = $.NSWindow.alloc.initWithContentRectStyleMaskBackingDefer($.NSMakeRect(0, 0, 580, 210), 3, $.NSBackingStoreBuffered, false);
-  window.title = '스티커';
-  target = $.StickerAccessTarget.alloc.init; window.delegate = target;
-  statusLabel = $.NSTextField.alloc.initWithFrame($.NSMakeRect(20, 112, 540, 78));
+  window = $.NSWindow.alloc.initWithContentRectStyleMaskBackingDefer($.NSMakeRect(0, 0, 350, 125), 3, $.NSBackingStoreBuffered, false);
+  window.title = '스티커'; window.delegate = target;
+  statusLabel = $.NSTextField.alloc.initWithFrame($.NSMakeRect(20, 65, 310, 42));
   statusLabel.editable = false; statusLabel.selectable = true; statusLabel.bezeled = false; statusLabel.drawsBackground = false;
-  statusLabel.cell.wraps = true;
-  window.contentView.addSubview(statusLabel);
-  ['열기', '새로고침', '서비스 시작', '서비스 중지', '앱 종료'].forEach(function (title, index) { buttons.push(makeButton(title, index, 15 + index * 112, 65, 108)); });
-  confirmButton = makeButton('중지 확인', 5, 175, 18, 110);
-  cancelButton = makeButton('취소', 6, 295, 18, 110);
-  window.center;
+  statusLabel.cell.wraps = true; window.contentView.addSubview(statusLabel);
+  problemAction = makeProblemButton('다시 확인', 'open', 20);
+  makeProblemButton('닫기', 'hide', 190); window.center;
+}
+function hideProblem() { if (window) window.orderOut(null); }
+function showProblem() {
+  if (shouldQuit) return;
+  ensureProblem(); render(); window.makeKeyAndOrderFront(null);
 }
 function render() {
-  if (!statusLabel) return;
-  var busy = !!activeTask || !!pendingAction;
-  var verb = activeTask ? activeTask.verb : pendingAction;
-  statusLabel.stringValue = shouldQuit ? '작업 후 종료' : busy ? ({ status: '상태 확인 중…', open: '브라우저 열기 요청 중…', start: '서비스 시작 중…', stop: '서비스 중지 중…' }[verb] || '작업 중…') : confirmingStop ? '스티커 서비스를 중지할까요?' : StickerAccess.label(snapshot);
-  buttons.forEach(function (button, index) { button.enabled = index === 4 || (!busy && !confirmingStop && !shouldQuit); });
-  confirmButton.hidden = !confirmingStop; cancelButton.hidden = !confirmingStop;
-  confirmButton.enabled = !busy && !shouldQuit; cancelButton.enabled = !busy && !shouldQuit;
+  if (!statusItem) return;
+  var busy = !!activeTask || !!pendingAction, verb = activeTask ? activeTask.verb : pendingAction;
+  var label = shouldQuit ? '작업 후 종료' : busy ? ({ status: '상태 확인 중…', open: '스티커 열기 중…', start: '서비스 시작 중…', stop: '서비스 중지 중…' }[verb] || '작업 중…') : StickerAccess.label(snapshot).split('\n')[0];
+  statusItem.button.toolTip = label;
+  menuItems[1].title = label + (!busy && lastChecked ? ' · ' + lastChecked : '');
+  menuItems.forEach(function (item, index) { if (index !== 1) item.enabled = index === 7 || (!busy && !shouldQuit); });
+  if (statusLabel) {
+    statusLabel.stringValue = label;
+    var value = StickerAccess.parse(snapshot), canStart = value.state === 'stopped' || value.state === 'not_installed';
+    problemAction.title = canStart ? '시작하고 열기' : '다시 확인';
+    problemAction.tag = actions.indexOf(canStart ? 'start-open' : 'open');
+    problemAction.enabled = !busy && !shouldQuit;
+  }
 }
 function requestAppQuit() {
-  shouldQuit = true; pendingAction = null; confirmingStop = false;
+  shouldQuit = true; pendingAction = null; confirmingStop = false; openAfterCurrent = false;
   render();
   if (!activeTask) $.exit(0);
 }
 function requestAction(action) {
   if (action === 'quit') { requestAppQuit(); return; }
-  if (activeTask || pendingAction || shouldQuit) return;
+  if (action === 'hide') { hideProblem(); return; }
+  if (shouldQuit) return;
+  if (activeTask || pendingAction) {
+    var verb = activeTask ? activeTask.verb : pendingAction;
+    // Never queue repeated opens, or reopen a service the user is stopping.
+    if (action === 'open' && verb !== 'open' && verb !== 'stop') openAfterCurrent = true;
+    return;
+  }
   if (action === 'cancel-stop') confirmingStop = false;
-  else if (action === 'confirm-stop' && confirmingStop) { confirmingStop = false; pendingAction = 'stop'; }
-  else if (confirmingStop) return;
-  else if (action === 'stop') confirmingStop = true;
-  else if (['open', 'status', 'start'].indexOf(action) >= 0) pendingAction = action;
+  else if (action === 'confirm-stop') { confirmingStop = false; openAfterCurrent = false; pendingAction = 'stop'; }
+  else if (action === 'stop') { confirmingStop = true; }
+  else if (action === 'start-open') {
+    var value = StickerAccess.parse(snapshot);
+    if (value.state !== 'stopped' && value.state !== 'not_installed') return;
+    openAfterCurrent = true; pendingAction = 'start';
+  } else if (['open', 'status', 'start'].indexOf(action) >= 0) { confirmingStop = false; pendingAction = action; }
+  render();
+}
+function operationCompleted(verb) {
+  lastChecked = new Date().toLocaleTimeString();
+  var value = StickerAccess.parse(snapshot), followOpen = openAfterCurrent;
+  openAfterCurrent = false;
+  if (shouldQuit) return;
+  if (followOpen && value.state === 'ready' && value.daemon === 'local_socket' && value.url && value.reason === 'none' && (value.action === 'none' || value.action === 'started')) pendingAction = 'open';
+  else if (verb === 'open') {
+    if (value.state === 'ready' && value.action === 'opened') hideProblem();
+    else showProblem();
+  } else if (followOpen) showProblem();
   render();
 }
 function cleanupOperation(operation) {
@@ -128,22 +183,20 @@ function finishOperation(operation) {
   } catch { snapshot = ''; }
   finally { cleanupOperation(operation); }
 }
-function run() {
-  ensureWindow(); window.makeKeyAndOrderFront(null);
-  if (!activeTask && !pendingAction && !shouldQuit && !confirmingStop) pendingAction = 'status';
-  render();
-}
+function run() { ensureMenu(); requestAction('open'); }
 function reopen() { run(); }
 function idle() {
   if (!activeTask && pendingAction && !shouldQuit) {
     var verb = pendingAction; pendingAction = null; snapshot = '';
     beginOperation(verb);
+    if (!activeTask) operationCompleted(verb);
   }
   if (activeTask && !activeTask.task.running) {
     var operation = activeTask;
     try { finishOperation(operation); }
     catch { snapshot = ''; }
     finally { activeTask = null; }
+    operationCompleted(operation.verb);
   }
   render();
   if (shouldQuit && !activeTask) $.exit(0);

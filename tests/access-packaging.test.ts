@@ -538,7 +538,7 @@ void test("diagnostic C separates internal quit from experimental AppleEvent can
   assert.equal(exits, 1);
 });
 
-void test("VM nonmodal controller returns from run, confirms stop inline, and rejects repeated queued actions", async () => {
+void test("VM Dock queues open without a management window and confirms stop explicitly", async () => {
   const { runInNewContext } = await import("node:vm");
   const context: {
     run?: () => void;
@@ -547,6 +547,7 @@ void test("VM nonmodal controller returns from run, confirms stop inline, and re
     pendingAction?: string | null;
     confirmingStop?: boolean;
     activeTask?: object | null;
+    ensureMenu?: () => void;
     ensureWindow?: () => void;
     render?: () => void;
     window?: object;
@@ -568,6 +569,7 @@ void test("VM nonmodal controller returns from run, confirms stop inline, and re
   assert.ok(context.run);
   assert.ok(context.reopen);
   let shown = 0;
+  context.ensureMenu = () => undefined;
   context.ensureWindow = () => undefined;
   context.render = () => undefined;
   context.window = {
@@ -576,12 +578,12 @@ void test("VM nonmodal controller returns from run, confirms stop inline, and re
     },
   };
   context.run();
-  assert.equal(context.pendingAction, "status");
+  assert.equal(context.pendingAction, "open");
   context.requestAction("start");
-  assert.equal(context.pendingAction, "status");
+  assert.equal(context.pendingAction, "open");
   context.reopen();
-  assert.equal(shown, 2);
-  assert.equal(context.pendingAction, "status");
+  assert.equal(shown, 0);
+  assert.equal(context.pendingAction, "open");
   context.pendingAction = null;
   context.requestAction("stop");
   assert.equal(context.confirmingStop, true);
@@ -610,6 +612,7 @@ void test("VM idle polls a live child once, cleans a completed child before exit
     activeTask?: { task: object };
     pendingAction?: string | null;
     snapshot?: string;
+    ensureMenu?: () => void;
     ensureWindow?: () => void;
     render?: () => void;
     finishOperation?: () => void;
@@ -629,18 +632,21 @@ void test("VM idle polls a live child once, cleans a completed child before exit
     },
   };
   runInNewContext(
-    readFileSync(join(root, "packaging/macos/Sticker.jxa"), "utf8"),
+    readFileSync(join(root, "packaging/macos/contract.js"), "utf8") +
+      "\n" +
+      readFileSync(join(root, "packaging/macos/Sticker.jxa"), "utf8"),
     context,
   );
   assert.ok(context.idle);
   assert.ok(context.requestAppQuit);
   assert.ok(context.reopen);
   context.render = () => undefined;
+  context.ensureMenu = () => undefined;
   context.ensureWindow = () => undefined;
   context.window = { makeKeyAndOrderFront: () => undefined };
   context.snapshot = "old snapshot";
   context.reopen();
-  assert.equal(context.pendingAction, "status");
+  assert.equal(context.pendingAction, "open");
   context.pendingAction = null;
   let polls = 0;
   let running = true;
@@ -785,4 +791,281 @@ void test("VM cwd diagnostic stops on first timeout, sends TERM only once, and n
   assert.equal(context.active, null);
   assert.equal(closes, 1);
   assert.equal(context.index, 0);
+});
+
+void test("VM start-and-open requires fresh ready health and coalesces Dock requests", async () => {
+  const { runInNewContext } = await import("node:vm");
+  const context: Record<string, unknown> = {
+    ObjC: {
+      import: () => undefined,
+      bindFunction: () => undefined,
+      registerSubclass: () => undefined,
+    },
+    $: { exit: () => undefined },
+  };
+  runInNewContext(
+    readFileSync(join(root, "packaging/macos/contract.js"), "utf8") +
+      "\n" +
+      readFileSync(join(root, "packaging/macos/Sticker.jxa"), "utf8"),
+    context,
+  );
+  const action = context.requestAction as (value: string) => void;
+  const completed = context.operationCompleted as (verb: string) => void;
+  context.render = () => undefined;
+  context.showProblem = () => undefined;
+  context.hideProblem = () => undefined;
+  context.snapshot = JSON.stringify({
+    schemaVersion: 1,
+    state: "stopped",
+    containerRunning: false,
+    appResponse: "not_checked",
+    browserReachability: "unverified",
+    urlScope: "docker_host",
+    daemon: "local_socket",
+    url: "http://localhost:8787",
+    reason: "stopped",
+    action: "none",
+    lockName: "",
+  });
+  action("start-open");
+  assert.equal(context.pendingAction, "start");
+  action("open");
+  action("open");
+  assert.equal(context.pendingAction, "start");
+  context.pendingAction = null;
+  context.snapshot = "{}";
+  assert.equal(typeof completed, "function");
+  completed("start");
+  assert.equal(context.pendingAction, null);
+  context.snapshot = JSON.stringify({
+    schemaVersion: 1,
+    state: "stopped",
+    containerRunning: false,
+    appResponse: "not_checked",
+    browserReachability: "unverified",
+    urlScope: "docker_host",
+    daemon: "local_socket",
+    url: "http://localhost:8787",
+    reason: "stopped",
+    action: "none",
+    lockName: "",
+  });
+  action("start-open");
+  context.pendingAction = null;
+  context.snapshot = JSON.stringify({
+    schemaVersion: 1,
+    state: "ready",
+    containerRunning: true,
+    appResponse: "verified",
+    browserReachability: "unverified",
+    urlScope: "docker_host",
+    daemon: "local_socket",
+    url: "http://localhost:8787",
+    reason: "none",
+    action: "started",
+    lockName: "",
+  });
+  completed("start");
+  assert.equal(context.pendingAction, "open");
+  action("quit");
+  assert.equal(context.pendingAction, null);
+});
+
+void test("VM native menu adapter retains its item and explicit controls without blocking menu tracking", async () => {
+  const { runInNewContext } = await import("node:vm");
+  type Item = {
+    title: string;
+    enabled?: boolean;
+    submenu?: Menu;
+    tag?: number;
+  };
+  type Menu = { items: Item[]; addItem: (item: Item) => void };
+  const menus: Menu[] = [];
+  let shown = 0;
+  let methods: Record<string, { implementation: () => void }> = {};
+  const native = {
+    NSVariableStatusItemLength: -1,
+    StickerAccessTarget: { alloc: { init: {} } },
+    NSStatusBar: {
+      systemStatusBar: {
+        statusItemWithLength: () => ({
+          button: { setAccessibilityLabel: () => undefined },
+        }),
+      },
+    },
+    NSMenu: {
+      alloc: {
+        initWithTitle: () => {
+          const value: Menu = {
+            items: [],
+            addItem(item) {
+              this.items.push(item);
+            },
+          };
+          menus.push(value);
+          return value;
+        },
+      },
+    },
+    NSMenuItem: {
+      alloc: {
+        initWithTitleActionKeyEquivalent: (title: string) => ({ title }),
+      },
+    },
+    NSWindow: {
+      alloc: {
+        initWithContentRectStyleMaskBackingDefer: () => {
+          shown++;
+          throw new Error("normal Dock must not show a window");
+        },
+      },
+    },
+  };
+  const context: Record<string, unknown> = {
+    ObjC: {
+      import: () => undefined,
+      bindFunction: () => undefined,
+      registerSubclass: (value: { methods: typeof methods }) => {
+        methods = value.methods;
+      },
+    },
+    $: native,
+  };
+  runInNewContext(
+    readFileSync(join(root, "packaging/macos/contract.js"), "utf8") +
+      "\n" +
+      readFileSync(join(root, "packaging/macos/Sticker.jxa"), "utf8"),
+    context,
+  );
+  (context.run as () => void)();
+  assert.equal(shown, 0);
+  assert.equal(context.pendingAction, "open");
+  assert.ok(context.statusItem);
+  context.pendingAction = null;
+  context.snapshot = JSON.stringify({
+    schemaVersion: 1,
+    state: "ready",
+    containerRunning: true,
+    appResponse: "verified",
+    browserReachability: "unverified",
+    urlScope: "docker_host",
+    daemon: "local_socket",
+    url: "http://localhost:8787",
+    reason: "none",
+    action: "opened",
+    lockName: "",
+  });
+  (context.render as () => void)();
+  assert.equal(menus[0]?.items[1]?.title.includes("\n"), false);
+  context.pendingAction = "open";
+  (context.render as () => void)();
+  assert.deepEqual(
+    menus[0]?.items
+      .map((item) => item.title)
+      .filter((title) => title !== "스티커 열기 중…"),
+    ["스티커 열기", "새로고침", "서비스 시작", "서비스 중지", "앱 종료"],
+  );
+  assert.deepEqual(
+    menus[1]?.items.map((item) => item.title),
+    ["중지 확인", "취소"],
+  );
+  context.pendingAction = null;
+  methods["menuWillOpen:"].implementation();
+  assert.equal(context.pendingAction, null);
+  context.pendingAction = null;
+  const request = context.requestAction as (action: string) => void;
+  request("cancel-stop");
+  assert.equal(context.pendingAction, null);
+  request("confirm-stop");
+  assert.equal(context.pendingAction, "stop");
+  request("open");
+  assert.equal(context.openAfterCurrent, false);
+});
+
+void test("VM launch failure shows the compact problem state without leaving a task", async () => {
+  const { runInNewContext } = await import("node:vm");
+  const context: Record<string, unknown> = {
+    ObjC: {
+      import: () => undefined,
+      bindFunction: () => undefined,
+      registerSubclass: () => undefined,
+    },
+    $: {},
+  };
+  runInNewContext(
+    readFileSync(join(root, "packaging/macos/contract.js"), "utf8") +
+      "\n" +
+      readFileSync(join(root, "packaging/macos/Sticker.jxa"), "utf8"),
+    context,
+  );
+  let problems = 0;
+  context.beginOperation = () => undefined;
+  context.render = () => undefined;
+  context.showProblem = () => {
+    problems++;
+  };
+  context.pendingAction = "open";
+  (context.idle as () => number)();
+  assert.equal(problems, 1);
+  assert.equal(context.activeTask, null);
+  assert.equal(context.pendingAction, null);
+});
+
+void test("VM fresh ready health never converts failed or busy starts into successful automatic opening", async () => {
+  const { runInNewContext } = await import("node:vm");
+  const context: Record<string, unknown> = {
+    ObjC: {
+      import: () => undefined,
+      bindFunction: () => undefined,
+      registerSubclass: () => undefined,
+    },
+    $: {},
+  };
+  runInNewContext(
+    readFileSync(join(root, "packaging/macos/contract.js"), "utf8") +
+      "\n" +
+      readFileSync(join(root, "packaging/macos/Sticker.jxa"), "utf8"),
+    context,
+  );
+  const complete = context.operationCompleted as (verb: string) => void;
+  let problems = 0;
+  context.render = () => undefined;
+  context.showProblem = () => {
+    problems++;
+  };
+  const ready = (action: string, reason: string) =>
+    JSON.stringify({
+      schemaVersion: 1,
+      state: "ready",
+      containerRunning: true,
+      appResponse: "verified",
+      browserReachability: "unverified",
+      urlScope: "docker_host",
+      daemon: "local_socket",
+      url: "http://localhost:8787",
+      reason,
+      action,
+      lockName: "",
+    });
+  for (const [action, reason] of [
+    ["failed", "mutation_failed"],
+    ["busy", "mutation_busy"],
+    ["started", "target_changed"],
+    ["none", "unknown"],
+    ["url_only", "none"],
+  ] as const) {
+    context.openAfterCurrent = true;
+    context.pendingAction = null;
+    context.snapshot = ready(action, reason);
+    complete("start");
+    assert.equal(context.pendingAction, null, `${action}/${reason}`);
+  }
+  assert.equal(problems, 5);
+  for (const action of ["none", "started"]) {
+    context.openAfterCurrent = true;
+    context.pendingAction = null;
+    context.snapshot = ready(action, "none");
+    complete("start");
+    assert.equal(context.pendingAction, "open", action);
+  }
 });
