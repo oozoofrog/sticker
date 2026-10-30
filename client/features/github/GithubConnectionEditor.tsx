@@ -246,7 +246,7 @@ export function GithubConnectionEditor({
       }}
     >
       <form
-        className="editor-form"
+        className="editor-form github-connection-editor"
         onSubmit={(e) => {
           void submit(e);
         }}

@@ -136,6 +136,25 @@ test("GitHub explicit connection, readonly evidence states, head mismatch and di
   await expect(
     editor.getByText(`${owner}/${repository}-remote`, { exact: true }),
   ).toBeVisible();
+  const repositoryValues = [
+    editor.getByText(`${owner}/${repository}`, { exact: true }),
+    editor.getByText(`${owner}/${repository}-remote`, { exact: true }),
+  ];
+  for (const value of repositoryValues) {
+    await expect(value).toBeVisible();
+    await expect
+      .poll(() =>
+        value.evaluate((element) => {
+          const box = element.getBoundingClientRect();
+          return (
+            element.scrollWidth <= element.clientWidth &&
+            box.left >= 0 &&
+            box.right <= window.innerWidth
+          );
+        }),
+      )
+      .toBe(true);
+  }
   await page.screenshot({
     path: testInfo.outputPath("github-connection-conflict.png"),
     fullPage: true,
