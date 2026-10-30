@@ -77,7 +77,7 @@ test("GitHub explicit connection, readonly evidence states, head mismatch and di
       editor.getByRole("option", { name: /second-project/ }),
     ).toBeAttached();
     await editor
-      .getByLabel("저장소")
+      .getByRole("combobox", { name: "저장소", exact: true })
       .selectOption({ label: "octocat/project · 공개" });
   };
   await chooseRepository();
