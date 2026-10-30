@@ -1,3 +1,4 @@
+import { maintenanceSnapshotSchema } from "./contracts/maintenance.js";
 import { historyDetailSchema } from "./contracts/history.js";
 /** Runtime validation for values crossing JSON and SQLite boundaries. */
 import { z } from "zod";
@@ -104,6 +105,8 @@ export const issueDetailSchema = z.object({
   attachments: z.array(attachmentSchema),
 });
 export const apiErrorSchema = z.object({
+  maintenance: maintenanceSnapshotSchema.optional().catch(undefined),
+  retryAfterSeconds: z.literal(5).optional().catch(undefined),
   fields: z.record(z.string(), z.string()).optional(),
   error: z.string().optional(),
   code: z.string().optional(),

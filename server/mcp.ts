@@ -67,6 +67,8 @@ class ApiError extends Error {
     public code: string,
     message: string,
     public fields?: Record<string, string>,
+    public maintenance?: z.infer<typeof apiErrorSchema>["maintenance"],
+    public retryAfterSeconds?: number,
   ) {
     super(message);
   }
@@ -159,6 +161,12 @@ export function createStickerMcp(apiUrl: string, token: string): McpServer {
                 .map(([key, value]) => [scrub(key), scrub(value)]),
             )
           : undefined,
+        error.code === "MAINTENANCE" &&
+          error.maintenance &&
+          !JSON.stringify(error.maintenance).includes(token)
+          ? error.maintenance
+          : undefined,
+        error.code === "MAINTENANCE" ? error.retryAfterSeconds : undefined,
       );
     }
     return response;
@@ -189,6 +197,10 @@ export function createStickerMcp(apiUrl: string, token: string): McpServer {
             code: error.code,
             status: error.status,
             ...(error.fields ? { fields: error.fields } : {}),
+            ...(error.maintenance ? { maintenance: error.maintenance } : {}),
+            ...(error.retryAfterSeconds
+              ? { retryAfterSeconds: error.retryAfterSeconds }
+              : {}),
           }),
           isError: true,
         };
