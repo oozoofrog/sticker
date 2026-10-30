@@ -1,3 +1,4 @@
+import { MarkdownEditor } from "./features/markdown/MarkdownEditor.js";
 import {
   issueTemplateSchema,
   templateDetailSchema,
@@ -612,17 +613,15 @@ export function IssueEditor({
               {templateBusy && <p role="status">템플릿 적용 중…</p>}
             </>
           )}
-          <Field label="설명">
-            <textarea
-              rows={5}
-              maxLength={50000}
-              value={description}
-              onChange={(e) => {
-                setDescription(e.target.value);
-              }}
-              placeholder="작업 내용 · 완료 기준"
-            />
-          </Field>
+          <MarkdownEditor
+            label="설명"
+            rows={5}
+            maxLength={100000}
+            value={description}
+            onChange={setDescription}
+            disabled={busy}
+            placeholder="작업 내용 · 완료 기준"
+          />
           {template && (
             <TemplateIssueFields
               detail={template}
