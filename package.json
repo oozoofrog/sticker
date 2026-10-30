@@ -16,7 +16,7 @@
     "test": "node --import tsx --test tests/*.test.ts tests/ui/*.test.ts tests/ui/*.test.tsx && node --test tests/access-runtime.test.mjs",
     "test:ui": "playwright test",
     "format:check": "prettier --check \"{server,client,tests}/**/*.{ts,tsx,css,mjs}\" \"*.{ts,mjs,json,html,yaml}\" \"{README.md,docs/**/*.md}\" \".github/workflows/*.{yml,yaml}\"",
-    "test:production": "node tests/production-smoke.mjs",
+    "test:production": "node tests/production-smoke.mjs && node tests/compiled-maintenance-smoke.mjs",
     "lint": "eslint . --max-warnings 0",
     "lint:report": "eslint . --max-warnings 0 --format json --output-file lint-report.json",
     "test:lint": "node --test tests/lint-config.test.mjs"

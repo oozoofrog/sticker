@@ -6,6 +6,8 @@ export class ApiError extends Error {
     public status: number,
     public code: string,
     public fields?: Record<string, string>,
+    public maintenance?: z.infer<typeof apiErrorSchema>["maintenance"],
+    public retryAfterSeconds?: number,
   ) {
     super(message);
   }
@@ -39,6 +41,8 @@ export async function api(
       response.status,
       body.code || "REQUEST_FAILED",
       body.fields,
+      body.code === "MAINTENANCE" ? body.maintenance : undefined,
+      body.code === "MAINTENANCE" ? body.retryAfterSeconds : undefined,
     );
   }
   if (response.status === 204)
