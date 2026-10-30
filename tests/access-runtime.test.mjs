@@ -17,6 +17,12 @@ function fixture() {
   const root = mkdtempSync(join(tmpdir(), "sticker access '한$`-"));
   mkdirSync(join(root, "scripts"));
   mkdirSync(join(root, "bin"));
+  // No test may launch the user's browser, including on native macOS.
+  for (const opener of ["open", "xdg-open"]) {
+    writeFileSync(join(root, "bin", opener), "#!/bin/sh\nexit 93\n", {
+      mode: 0o755,
+    });
+  }
   for (const file of ["sticker.sh", "host-tools.sh"])
     cpSync(resolve("scripts", file), join(root, "scripts", file));
   const log = join(root, "calls");
@@ -160,11 +166,13 @@ test("opening uses a validated argv URL only, never sources .env, and respects e
   try {
     const marker = join(f.root, "executed");
     writeFileSync(join(f.root, ".env"), 'touch "' + marker + '"\n');
-    writeFileSync(
-      join(f.root, "bin/xdg-open"),
-      '#!/bin/bash\nprintf "%s" "$1" > "$FIXTURE_OPEN"\n',
-      { mode: 0o755 },
-    );
+    for (const opener of ["open", "xdg-open"]) {
+      writeFileSync(
+        join(f.root, "bin", opener),
+        '#!/bin/bash\nprintf "%s" "$1" > "$FIXTURE_OPEN"\n',
+        { mode: 0o755 },
+      );
+    }
     const opened = f.run("open", {
       DISPLAY: ":fixture",
       STICKER_OPEN_BROWSER: "1",
@@ -224,11 +232,13 @@ test("OS opener does not inherit Docker probe file limits or browser-killing wat
   const f = fixture();
   try {
     const profile = join(f.root, "opener-output");
-    writeFileSync(
-      join(f.root, "bin/xdg-open"),
-      '#!/usr/bin/env node\nrequire("node:fs").writeFileSync(process.env.FIXTURE_OPEN,Buffer.alloc(70000,1));\n',
-      { mode: 0o755 },
-    );
+    for (const opener of ["open", "xdg-open"]) {
+      writeFileSync(
+        join(f.root, "bin", opener),
+        '#!/usr/bin/env node\nrequire("node:fs").writeFileSync(process.env.FIXTURE_OPEN,Buffer.alloc(70000,1));\n',
+        { mode: 0o755 },
+      );
+    }
     const result = f.run("open", {
       DISPLAY: ":fixture",
       STICKER_OPEN_BROWSER: "1",

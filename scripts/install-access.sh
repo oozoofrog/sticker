@@ -86,7 +86,18 @@ if [[ "$mode" = --linux ]]; then
 else
   [[ "$(uname -s)" = Darwin ]] || fail 'macOS에서만 앱을 컴파일할 수 있습니다.'
   [[ "$target" = *.app ]] || fail '.app 경로를 지정하세요.'
-  [[ -x /usr/bin/osacompile && -x /usr/bin/plutil && -x /usr/bin/codesign ]] || fail 'macOS 기본 컴파일 도구가 없습니다.'
+  [[ -x /usr/bin/xcrun && -x /usr/bin/plutil && -x /usr/bin/codesign ]] || fail '설치된 Swift 5.7 이상과 macOS SDK 11.3 이상이 필요합니다. 자동 설치하지 않습니다.'
+  compiler=$(/usr/bin/xcrun --find swiftc 2>/dev/null) || fail 'Swift 컴파일러가 없습니다. Xcode 또는 Command Line Tools를 먼저 설치하세요.'
+  sdk=$(/usr/bin/xcrun --sdk macosx --show-sdk-path 2>/dev/null) || fail '설치된 macOS SDK를 찾을 수 없습니다.'
+  sdk_version=$(/usr/bin/xcrun --sdk macosx --show-sdk-version 2>/dev/null) || fail 'macOS SDK 버전을 확인할 수 없습니다.'
+  [[ "$sdk_version" =~ ^([0-9]+)\.([0-9]+) ]] || fail 'macOS SDK 버전을 확인할 수 없습니다.'
+  (( BASH_REMATCH[1] > 11 || (BASH_REMATCH[1] == 11 && BASH_REMATCH[2] >= 3) )) || fail 'macOS SDK 11.3 이상이 필요합니다.'
+  compiler_version=$("$compiler" --version) || fail 'Swift 버전을 확인할 수 없습니다.'
+  [[ "$compiler_version" =~ Swift[[:space:]]version[[:space:]]([0-9]+)\.([0-9]+) ]] || fail 'Swift 버전을 확인할 수 없습니다.'
+  (( BASH_REMATCH[1] > 5 || (BASH_REMATCH[1] == 5 && BASH_REMATCH[2] >= 7) )) || fail 'Swift 5.7 이상이 필요합니다.'
+  architecture=$(uname -m)
+  [[ "$architecture" = arm64 || "$architecture" = x86_64 ]] || fail '지원하지 않는 Mac 아키텍처입니다.'
+  printf 'Swift 5 언어 모드 · SDK %s · macOS 11.3 이상\n' "$sdk_version"
   if [[ -e "$target" ]]; then
     [[ -d "$target" && ! -L "$target/Contents" && ! -L "$target/Contents/Resources" ]] || fail '다른 앱은 변경하지 않습니다.'
     manifest="$target/Contents/Resources/sticker-source"
@@ -96,15 +107,17 @@ else
     [[ "$(/usr/bin/plutil -extract CFBundleIdentifier raw -o - "$target/Contents/Info.plist")" = org.oozoofrog.sticker.access ]] || fail '다른 앱 식별자입니다.'
     [[ "$(/usr/bin/osascript -l JavaScript "$ROOT/packaging/macos/is-running.jxa" "$target")" = stopped ]] || fail '기존 스티커 접근 앱을 종료한 뒤 설치하세요.'
   fi
-  cat "$ROOT/packaging/macos/contract.js" "$ROOT/packaging/macos/Sticker.jxa" > "$stage/Sticker.js"
-  /usr/bin/osacompile -s -l JavaScript -o "$stage/Sticker.app" "$stage/Sticker.js" >/dev/null
-  /usr/bin/plutil -replace CFBundleIdentifier -string org.oozoofrog.sticker.access "$stage/Sticker.app/Contents/Info.plist"
+  mkdir -p "$stage/Sticker.app/Contents/MacOS" "$stage/Sticker.app/Contents/Resources" "$stage/module-cache"
+  "$compiler" -parse-as-library -swift-version 5 -target "$architecture-apple-macosx11.3" -sdk "$sdk" -module-cache-path "$stage/module-cache" -framework AppKit -framework WebKit "$ROOT/packaging/macos/AccessCore.swift" "$ROOT/packaging/macos/StickerApp.swift" "$ROOT/packaging/macos/Main.swift" -o "$stage/Sticker.app/Contents/MacOS/Sticker"
+  cat > "$stage/Sticker.app/Contents/Info.plist" <<'PLIST'
+<?xml version="1.0" encoding="UTF-8"?><!DOCTYPE plist PUBLIC "-//Apple//DTD PLIST 1.0//EN" "http://www.apple.com/DTDs/PropertyList-1.0.dtd"><plist version="1.0"><dict><key>CFBundleExecutable</key><string>Sticker</string><key>CFBundleIdentifier</key><string>org.oozoofrog.sticker.access</string><key>CFBundleName</key><string>Sticker</string><key>CFBundlePackageType</key><string>APPL</string><key>CFBundleVersion</key><string>2</string><key>LSMinimumSystemVersion</key><string>11.3</string><key>NSPrincipalClass</key><string>StickerApplication</string><key>NSHighResolutionCapable</key><true/></dict></plist>
+PLIST
   manifest > "$stage/Sticker.app/Contents/Resources/sticker-source"
   mkdir "$stage/Sticker.app/Contents/Resources/bin"
   printf '#!/bin/bash\nexec %q "$@"\n' "$docker_executable" > "$stage/Sticker.app/Contents/Resources/bin/docker"
   chmod 700 "$stage/Sticker.app/Contents/Resources/bin/docker"
   chmod 600 "$stage/Sticker.app/Contents/Resources/sticker-source"
-  # Resource/Info.plist changes invalidate osacompile's original ad-hoc seal.
+  # Sign only after the executable, resources and Info.plist are final.
   # Finalize the local app only; no Developer ID, keychain, or OS policy changes.
   /usr/bin/codesign --force --sign - --timestamp=none "$stage/Sticker.app"
   /usr/bin/codesign --verify --deep --strict "$stage/Sticker.app"

@@ -112,7 +112,9 @@ void test("newline target and missing parent reject without creating files", () 
       f.run("--linux", join(f.temp, "missing", "x.desktop")).status,
       0,
     );
-    assert.notEqual(f.run("--mac", join(f.temp, "Sticker.app")).status, 0);
+    if (process.platform !== "darwin") {
+      assert.notEqual(f.run("--mac", join(f.temp, "Sticker.app")).status, 0);
+    }
   } finally {
     f.close();
   }
@@ -1069,3 +1071,94 @@ void test("VM fresh ready health never converts failed or busy starts into succe
     assert.equal(context.pendingAction, "open", action);
   }
 });
+
+void test(
+  "Mac native installation compiles and strictly signs the owned bundle",
+  { skip: process.platform !== "darwin" },
+  () => {
+    const f = fixture();
+    try {
+      const target = join(f.temp, "Sticker.app");
+      const result = f.run("--mac", target);
+      assert.equal(result.status, 0, result.stderr);
+      const executable = join(target, "Contents/MacOS/Sticker");
+      assert.equal(lstatSync(executable).isFile(), true);
+      assert.equal(
+        spawnSync("/usr/bin/codesign", [
+          "--verify",
+          "--deep",
+          "--strict",
+          target,
+        ]).status,
+        0,
+      );
+      assert.match(
+        readFileSync(join(target, "Contents/Info.plist"), "utf8"),
+        /org.oozoofrog.sticker.access/,
+      );
+      assert.match(result.stdout, /Swift/);
+      const manifest = readFileSync(
+        join(target, "Contents/Resources/sticker-source"),
+        "utf8",
+      );
+      assert.equal(manifest.split("\n")[3], "desktop-linux");
+      assert.equal(
+        f.run("--mac", target).status,
+        0,
+        "same-owner reinstall succeeds",
+      );
+      const previousExecutable = readFileSync(executable);
+      const previousCore = readFileSync(
+        join(f.source, "packaging/macos/AccessCore.swift"),
+      );
+      writeFileSync(
+        join(f.source, "packaging/macos/AccessCore.swift"),
+        "this is deliberately invalid Swift\n",
+      );
+      assert.notEqual(
+        f.run("--mac", target).status,
+        0,
+        "compiler failure refuses replacement",
+      );
+      assert.deepEqual(readFileSync(executable), previousExecutable);
+      assert.equal(
+        readFileSync(join(target, "Contents/Resources/sticker-source"), "utf8"),
+        manifest,
+      );
+      assert.equal(
+        spawnSync("/usr/bin/codesign", [
+          "--verify",
+          "--deep",
+          "--strict",
+          target,
+        ]).status,
+        0,
+      );
+      writeFileSync(
+        join(f.source, "packaging/macos/AccessCore.swift"),
+        previousCore,
+      );
+      writeFileSync(
+        join(f.temp, "bin/docker"),
+        "#!/bin/sh\necho other-context\n",
+        { mode: 0o755 },
+      );
+      assert.notEqual(f.run("--mac", target).status, 0);
+      assert.equal(
+        readFileSync(join(target, "Contents/Resources/sticker-source"), "utf8"),
+        manifest,
+      );
+      assert.equal(
+        spawnSync("/usr/bin/codesign", [
+          "--verify",
+          "--deep",
+          "--strict",
+          target,
+        ]).status,
+        0,
+      );
+    } finally {
+      f.close();
+    }
+  },
+);
