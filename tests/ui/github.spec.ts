@@ -22,7 +22,7 @@ test("GitHub explicit connection, readonly evidence states, head mismatch and di
       })
     ).json(),
   );
-  const repository = `project-${project.key.toLowerCase()}`;
+  const repository = "project";
   const issue = issueSchema.parse(
     await (
       await request.post("/api/issues", {
@@ -62,8 +62,27 @@ test("GitHub explicit connection, readonly evidence states, head mismatch and di
   await expect(settings.getByText("연결 안 됨", { exact: true })).toBeVisible();
   await settings.getByRole("button", { name: "저장소 설정" }).click();
   const editor = page.getByRole("dialog", { name: "GitHub 저장소 연결" });
-  await editor.getByLabel("저장소 소유자").fill("octocat");
-  await editor.getByLabel("저장소 이름").fill(repository);
+  const chooseRepository = async () => {
+    await editor
+      .getByLabel("조회 주체")
+      .selectOption({ label: "octocat · 공개 저장소 · 인증 없음" });
+    await expect(
+      editor.getByRole("option", {
+        name: "octocat/project · 공개",
+        exact: true,
+      }),
+    ).toBeAttached();
+    await editor.getByRole("button", { name: "더 보기" }).click();
+    await expect(
+      editor.getByRole("option", { name: /second-project/ }),
+    ).toBeAttached();
+    await editor
+      .getByLabel("저장소")
+      .selectOption({ label: "octocat/project · 공개" });
+  };
+  await chooseRepository();
+  await expect(editor.getByLabel("저장소 소유자")).toHaveCount(0);
+  await expect(editor.getByLabel("자격증명 설정 참조")).toHaveCount(0);
   await expect(
     editor.getByRole("button", { name: "저장소 연결", exact: true }),
   ).toBeDisabled();
@@ -73,7 +92,7 @@ test("GitHub explicit connection, readonly evidence states, head mismatch and di
     .click();
   await expect(settings.getByText("연결됨", { exact: true })).toBeVisible();
   await settings.getByRole("button", { name: "저장소 설정" }).click();
-  await expect(editor.getByLabel("저장소 이름")).toHaveValue(repository);
+  await chooseRepository();
   const concurrent = await request.put(`/api/projects/${project.id}/github`, {
     headers: { origin },
     data: {
@@ -89,7 +108,7 @@ test("GitHub explicit connection, readonly evidence states, head mismatch and di
     .getByRole("button", { name: "저장소 연결", exact: true })
     .click();
   await expect(editor.getByRole("alert")).toContainText(
-    "연결 또는 근거가 변경되었습니다",
+    "저장소 선택이 만료되었거나 변경되었습니다",
   );
   await editor.getByRole("button", { name: "최신 연결 확인" }).click();
   await expect(
@@ -99,8 +118,10 @@ test("GitHub explicit connection, readonly evidence states, head mismatch and di
     path: testInfo.outputPath("github-connection-conflict.png"),
     fullPage: true,
   });
-  await editor.getByRole("button", { name: "이 버전 기준으로 검토" }).click();
-  await expect(editor.getByLabel("저장소 이름")).toHaveValue(repository);
+  await editor
+    .getByRole("button", { name: "이 버전 기준으로 다시 선택" })
+    .click();
+  await chooseRepository();
   await expect(
     editor.getByRole("button", { name: "저장소 연결", exact: true }),
   ).toBeDisabled();

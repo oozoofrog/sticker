@@ -3,6 +3,20 @@ import type { GithubService } from "../features/github.js";
 import { requestActor as actor, requestId as id } from "../http-context.js";
 /** Register after the common authentication and origin middleware. */
 export function registerGithubRoutes(app: Express, github: GithubService) {
+  app.get("/api/projects/:id/github/sources", (req, res) =>
+    res.json(github.discovery.sources(actor(req), id(req))),
+  );
+  app.post("/api/projects/:id/github/repositories", async (req, res) =>
+    res.json(
+      await github.discovery.repositories(actor(req), id(req), req.body),
+    ),
+  );
+  app.post("/api/projects/:id/github/select", async (req, res) =>
+    res.json(await github.discovery.connect(actor(req), id(req), req.body)),
+  );
+  app.post("/api/projects/:id/github/selection-status", (req, res) =>
+    res.json(github.discovery.status(actor(req), id(req), req.body)),
+  );
   app.get("/api/projects/:id/github", (req, res) =>
     res.json(github.connection(actor(req), id(req))),
   );

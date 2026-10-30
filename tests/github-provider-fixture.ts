@@ -6,6 +6,23 @@ export function githubBrowserFixture(): GithubProvider {
   return {
     enabled: true,
     client: () => ({
+      listRepositories: ({ publicOwner, page }) =>
+        Promise.resolve({
+          items: [
+            {
+              id: page,
+              repository: {
+                owner: publicOwner ?? "octocat",
+                name: page === 1 ? "project" : "second-project",
+              },
+              visibility: "public",
+              archived: page === 2,
+              disabled: false,
+            },
+          ],
+          hasMore: page === 1,
+        }),
+      verifySelection: () => Promise.resolve(),
       verify: () => Promise.resolve(),
       inspect: (target) => {
         const count = (attempts.get(target.url) ?? 0) + 1;

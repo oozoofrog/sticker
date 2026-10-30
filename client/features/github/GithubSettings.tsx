@@ -182,10 +182,14 @@ export function GithubSettings({
           onClose={() => {
             setEditing(false);
           }}
+          onResolved={(next) => {
+            resource.accept(next, path);
+            setEditing(false);
+          }}
           onConnect={async (input) => {
             const next = await api(
-              path,
-              { method: "PUT", body: json(input) },
+              `${path}/select`,
+              { method: "POST", body: json(input) },
               githubConnectionSchema,
             );
             resource.accept(next, path);
