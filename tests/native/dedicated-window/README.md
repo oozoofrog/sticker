@@ -94,3 +94,31 @@ this experiment is intended to establish; no native success is claimed yet.
 
 The documented WebKit destination must be a nonexistent file in an existing writable
 directory. No silent overwrite or custom atomic publication is implemented here.
+
+## Protocol-registration failure diagnostic (no UI)
+
+The first native launch stopped with `protocol does not exist` before window creation.
+That does not identify which protocol failed or prove the OS lacks WebKit support.
+Run this bounded diagnostic once in a fresh process, before attempting another GUI launch:
+
+```sh
+/usr/bin/osascript -l JavaScript tests/native/dedicated-window/Protocols.jxa
+```
+
+It imports the same three frameworks, queries the four exact official protocol names
+using Foundation `NSProtocolFromString`, and reports every runtime lookup. Unknown or
+nil lookup stops before any subclass registration. Only if all four are present does
+it register one empty, process-local subclass per protocol, stopping at the first error.
+No window, file, network, app-control, custom C binding, or policy changes are involved.
+Capture its JSON stdout and exit status; do not launch the GUI afterwards automatically.
+`runtime_protocol_absent` means unavailable to that process after imports, not a proven
+unsupported OS version. `jxa_registration_failed` with all runtime lookups true narrows
+the failure to the JXA bridge registration path rather than an absent runtime protocol.
+Even `registration_only_pass` proves neither callback support nor the full delegate.
+An unverified Foundation result is a stop, not permission to bypass protocol declarations.
+
+Official API references: [Foundation NSProtocolFromString](<https://developer.apple.com/documentation/foundation/nsprotocolfromstring(_:)>),
+[WKNavigationDelegate](https://developer.apple.com/documentation/webkit/wknavigationdelegate),
+[WKUIDelegate](https://developer.apple.com/documentation/webkit/wkuidelegate),
+[WKDownloadDelegate](https://developer.apple.com/documentation/webkit/wkdownloaddelegate),
+and [JXA Objective-C subclass registration](https://developer.apple.com/library/archive/releasenotes/InterapplicationCommunication/RN-JavaScriptForAutomation/Articles/OSX10-10.html).

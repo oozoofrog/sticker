@@ -1,0 +1,35 @@
+// No-UI, process-local diagnostic ONLY. No files, networking, app control or C binding.
+ObjC.import('Foundation'); ObjC.import('AppKit'); ObjC.import('WebKit');
+function run() {
+  var names = ['NSWindowDelegate', 'WKNavigationDelegate', 'WKUIDelegate', 'WKDownloadDelegate'];
+  var report = { stage: 'lookup', lookups: [], registrations: [] };
+  for (var i = 0; i < names.length; i++) {
+    var name = names[i];
+    try {
+      var value = $.NSProtocolFromString(name);
+      // A truthy wrapped nil is not evidence of availability.
+      var known = value !== null && value !== undefined && typeof value.isNil === 'function';
+      report.lookups.push({ name: name, available: known ? !value.isNil() : null });
+    } catch (error) {
+      report.stage = 'lookup_failed'; report.protocol = name;
+      report.error = String(error).slice(0, 180); return JSON.stringify(report);
+    }
+  }
+  for (var j = 0; j < report.lookups.length; j++) {
+    if (report.lookups[j].available !== true) {
+      report.stage = report.lookups[j].available === false ? 'runtime_protocol_absent' : 'lookup_unverified';
+      report.protocol = report.lookups[j].name; return JSON.stringify(report);
+    }
+  }
+  for (var k = 0; k < names.length; k++) {
+    try {
+      ObjC.registerSubclass({ name: 'StickerProtocolDiagnostic' + k, superclass: 'NSObject', protocols: [names[k]], methods: {} });
+      report.registrations.push({ name: names[k], registered: true });
+    } catch (error) {
+      report.stage = 'jxa_registration_failed'; report.protocol = names[k];
+      report.error = String(error).slice(0, 180); return JSON.stringify(report);
+    }
+  }
+  report.stage = 'registration_only_pass';
+  return JSON.stringify(report);
+}
