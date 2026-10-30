@@ -132,14 +132,16 @@ test("project examples become revisioned templates and create validated immutabl
   await editor
     .getByLabel("발견 버전 *", { exact: true })
     .selectOption(f.version.id);
-  await editor.getByLabel("설명", { exact: true }).fill("이슈에서 편집한 본문");
+  await editor
+    .getByRole("textbox", { name: "설명", exact: true })
+    .fill("이슈에서 편집한 본문");
   page.once("dialog", (dialog) => {
     void dialog.dismiss();
   });
   await editor.getByLabel("이슈 템플릿", { exact: true }).selectOption("");
-  await expect(editor.getByLabel("설명", { exact: true })).toHaveValue(
-    "이슈에서 편집한 본문",
-  );
+  await expect(
+    editor.getByRole("textbox", { name: "설명", exact: true }),
+  ).toHaveValue("이슈에서 편집한 본문");
   await expect(
     editor.getByRole("region", { name: "이슈 미리보기", exact: true }),
   ).toContainText("화면을 열고 저장");
@@ -186,9 +188,39 @@ test("project examples become revisioned templates and create validated immutabl
     data: { revision: current.template.revision + 1 },
   });
   await page.reload();
-  await expect(detail.locator(".description-text")).toHaveText(
-    before.issue.description,
+  const after = issueDetailSchema.parse(
+    await (await request.get(`/api/issues/${issueId}`)).json(),
   );
+  // A deleted/updated template must not rewrite the original issue or source.
+  expect(after.issue).toEqual(before.issue);
+  const description = detail.locator(".description-text");
+  await expect(
+    description.getByText("이슈에서 편집한 본문", { exact: true }),
+  ).toBeVisible();
+  for (const [heading, body] of [
+    ["재현 절차", "화면을 열고 저장"],
+    ["기대 결과", "한 번 저장"],
+    ["실제 결과", "오류 발생"],
+  ]) {
+    await expect(
+      description.getByRole("heading", {
+        name: heading,
+        exact: true,
+        level: 2,
+      }),
+    ).toBeVisible();
+    await expect(description.getByText(body, { exact: true })).toBeVisible();
+  }
+  await detail.getByRole("button", { name: "이슈 편집", exact: true }).click();
+  const savedEditor = page.getByRole("dialog", {
+    name: `${before.issue.key} 편집`,
+    exact: true,
+  });
+  await expect(
+    savedEditor.getByRole("textbox", { name: "설명", exact: true }),
+  ).toHaveValue(before.issue.description);
+  await savedEditor.getByRole("button", { name: "취소", exact: true }).click();
+  await expect(savedEditor).toBeHidden();
   await expect(detail.locator(".template-provenance")).toContainText("v2");
   expect(
     await page.evaluate(

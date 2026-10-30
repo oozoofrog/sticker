@@ -1,3 +1,5 @@
+import { MarkdownContent } from "./features/markdown/MarkdownContent.js";
+import { MarkdownEditor } from "./features/markdown/MarkdownEditor.js";
 import { IssueHistory } from "./features/history/IssueHistory.js";
 import { IssueGithubEvidence } from "./features/github/IssueGithubEvidence.js";
 import { IssueResources } from "./features/resources/IssueResources.js";
@@ -285,7 +287,11 @@ export default function IssuePanel({
               <div
                 className={`description-text ${!issue.description ? "muted" : ""}`}
               >
-                {issue.description || "설명 없음"}
+                {issue.description ? (
+                  <MarkdownContent value={issue.description} />
+                ) : (
+                  "설명 없음"
+                )}
               </div>
             </section>
             <IssueGithubEvidence
@@ -420,7 +426,7 @@ export default function IssuePanel({
                                 <Icon name="trash" size={13} />
                               </button>
                             </header>
-                            <p>{c.body}</p>
+                            <MarkdownContent value={c.body} />
                           </div>
                         </article>
                       ))
@@ -434,18 +440,14 @@ export default function IssuePanel({
                       void commentSubmit(e);
                     }}
                   >
-                    <label className="sr-only" htmlFor="comment-body">
-                      댓글 작성
-                    </label>
-                    <textarea
-                      id="comment-body"
+                    <MarkdownEditor
+                      label="댓글 작성"
                       value={comment}
-                      onChange={(e) => {
-                        setComment(e.target.value);
-                      }}
+                      onChange={setComment}
                       placeholder="생각, 진행 상황, 검증 결과를 남겨 주세요…"
                       rows={3}
                       maxLength={20000}
+                      disabled={busy}
                     />
                     <footer>
                       <button
