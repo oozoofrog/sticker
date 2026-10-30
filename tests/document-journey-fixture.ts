@@ -1,3 +1,4 @@
+import { projectSchema, issueSchema } from "../server/response-schemas.js";
 import assert from "node:assert/strict";
 import {
   resourceDetailSchema,
@@ -85,4 +86,27 @@ export async function prepareDocumentJourney(
     throw new Error("Expected pinned Markdown fixture");
   assert.equal(pins[0].version.markdown, journeyV1);
   return { initial, current, pin: pins[0] };
+}
+
+export async function createDocumentJourneyProject(call: Call, label: string) {
+  const created = await call("/projects", "POST", {
+    key: `J${crypto.randomUUID().replaceAll("-", "").slice(0, 7).toUpperCase()}`,
+    name: `Planning journey ${label}`,
+  });
+  assert.equal(
+    created.status,
+    201,
+    "Synthetic project creation must succeed before parsing its schema",
+  );
+  const project = projectSchema.parse(created.body);
+  const result = await call("/issues", "POST", {
+    projectId: project.id,
+    title: "기획 근거 검토",
+  });
+  assert.equal(
+    result.status,
+    201,
+    "Synthetic issue creation must succeed before parsing its schema",
+  );
+  return { project, issue: issueSchema.parse(result.body) };
 }

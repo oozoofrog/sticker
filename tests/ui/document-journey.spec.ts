@@ -1,8 +1,8 @@
 import { test, expect } from "@playwright/test";
-import { projectSchema, issueSchema } from "../../server/response-schemas.js";
 import { resourceDetailSchema } from "../../server/contracts/resources.js";
 import {
   prepareDocumentJourney,
+  createDocumentJourneyProject,
   journeyTitle,
   journeyV1,
   journeyV2,
@@ -18,40 +18,22 @@ test("HTTP-authored planning document pin stays historical through keyboard, his
     data: { password: "ephemeral-sticker-test-password" },
   });
   expect(login.ok()).toBe(true);
-  const project = projectSchema.parse(
-    await (
-      await request.post("/api/projects", {
-        headers: { origin },
-        data: {
-          key: `J${crypto.randomUUID().replaceAll("-", "").slice(0, 8).toUpperCase()}`,
-          name: `Planning journey ${info.project.name}`,
-        },
-      })
-    ).json(),
+  const call = async (path: string, method: string, body?: unknown) => {
+    const response = await request.fetch(`/api${path}`, {
+      method,
+      headers: { origin },
+      data: body,
+    });
+    return {
+      status: response.status(),
+      body: (await response.json()) as unknown,
+    };
+  };
+  const { project, issue } = await createDocumentJourneyProject(
+    call,
+    info.project.name,
   );
-  const issue = issueSchema.parse(
-    await (
-      await request.post("/api/issues", {
-        headers: { origin },
-        data: { projectId: project.id, title: "기획 근거 검토" },
-      })
-    ).json(),
-  );
-  const journey = await prepareDocumentJourney(
-    async (path, method, body) => {
-      const response = await request.fetch(`/api${path}`, {
-        method,
-        headers: { origin },
-        data: body,
-      });
-      return {
-        status: response.status(),
-        body: (await response.json()) as unknown,
-      };
-    },
-    project.id,
-    issue,
-  );
+  const journey = await prepareDocumentJourney(call, project.id, issue);
   await page.context().addCookies((await request.storageState()).cookies);
   await page.setViewportSize(
     info.project.name === "iphone"
