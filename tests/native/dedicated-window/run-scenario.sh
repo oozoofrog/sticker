@@ -41,21 +41,42 @@ printf '%s' "$fixture" > "$app/Contents/Resources/fixture-root"
 /usr/bin/codesign --verify --deep --strict "$app"
 "$app/Contents/MacOS/Scenario" > "$OUT/result.log" 2>&1 &
 app_pid=$!
+second_pid=
+if [[ ${STICKER_FIXTURE_MODE:-normal} == simultaneous ]]; then
+  "$app/Contents/MacOS/Scenario" > "$OUT/second-result.log" 2>&1 &
+  second_pid=$!
+  printf '%s %s\n' "$app_pid" "$second_pid" > "$OUT/concurrent-pids"
+fi
 # External supervision remains live even if AppKit enters a modal loop.
 (
   deadline=110
-  [[ ${STICKER_FIXTURE_MODE:-normal} != download ]] || deadline=210
+  case ${STICKER_FIXTURE_MODE:-normal} in download|file-select) deadline=210;; esac
   sleep "$deadline"
-  if kill -0 "$app_pid" 2>/dev/null; then
-    printf 'FAIL external deadline; TERM own app %s\n' "$app_pid" >> "$OUT/result.log"
-    kill -TERM "$app_pid"
-  fi
+  for own_pid in "$app_pid" ${second_pid:+"$second_pid"}; do
+    if kill -0 "$own_pid" 2>/dev/null; then
+      printf 'FAIL external deadline; TERM own app %s\n' "$own_pid" >> "$OUT/result.log"
+      kill -TERM "$own_pid"
+    fi
+  done
 ) &
 watchdog=$!
 set +e
 wait "$app_pid"
 result=$?
+if [[ -n "$second_pid" ]]; then
+  wait "$second_pid"
+  second_result=$?
+  [[ $second_result = 0 ]] || result=$second_result
+fi
 set -e
+if [[ ${STICKER_FIXTURE_MODE:-normal} == simultaneous ]]; then
+  # Exit0 alone is not success: both instances may wrongly decide to terminate.
+  winners=$(cat "$OUT/result.log" "$OUT/second-result.log" | grep -c 'PASS .* product controller checks' || true)
+  if [[ $winners != 1 ]]; then
+    printf 'FAIL expected exactly one completed winning instance; got %s\n' "$winners" >> "$OUT/result.log"
+    result=1
+  fi
+fi
 kill -TERM "$watchdog" 2>/dev/null || true
 wait "$watchdog" 2>/dev/null || true
 exit "$result"

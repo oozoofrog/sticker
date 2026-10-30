@@ -50,6 +50,38 @@ import WebKit
             let document = try await js("window.docID") as? String
             try check(document != nil, "first ready load")
             let mode = ProcessInfo.processInfo.environment["STICKER_FIXTURE_MODE"] ?? "normal"
+            if mode == "redirect-download" {
+                _ = try await js("(()=>{let a=document.createElement('a');a.href='/redirect-download';a.download='redirect.txt';document.body.append(a);a.click();return true})()")
+                await pause(2)
+                let requests = try String(contentsOf: root.appendingPathComponent("requests.jsonl"), encoding: .utf8)
+                try check(requests.contains("/redirect-download"), "redirect download requested through real WebKit")
+                try check(!requests.contains("/download-final"), "download redirect target never requested")
+                try check(controller.window.attachedSheet == nil, "rejected redirect does not open a save panel")
+                try check(try await js("window.docID") as? String == document, "rejected redirect preserves document")
+                log("PASS rejected download redirect requesting drain and quit")
+                NSApp.terminate(nil)
+                return
+            }
+            if mode == "file-select" {
+                try Data("synthetic upload 한글\n".utf8).write(to: root.appendingPathComponent("fixture-upload.txt"), options: .withoutOverwriting)
+                controller.webView.evaluateJavaScript("document.querySelector('#file').click()", completionHandler: nil)
+                for _ in 0..<30 { if controller.window.attachedSheet != nil { break }; await pause(0.1) }
+                try check(controller.window.attachedSheet is NSOpenPanel, "actual file picker displayed")
+                log("READY choose file through native UI: \(root.path)/fixture-upload.txt")
+                for _ in 0..<1800 {
+                    if (try? await js("document.querySelector('#file').files.length")) as? Int == 1 { break }
+                    if controller.window.attachedSheet == nil { await pause(0.2); break }
+                    await pause(0.1)
+                }
+                try check((try await js("document.querySelector('#file').files.length")) as? Int == 1,
+                          controller.window.attachedSheet == nil ? "file picker completed with one selected file (cancel is not success)" : "file picker completed before the bounded deadline (no selection is not success)")
+                try check(try await js("document.querySelector('#file').files[0].name") as? String == "fixture-upload.txt", "actual picker selected synthetic filename")
+                _ = try await js("document.querySelector('#file').files[0].text().then(x=>{window.fileText=x});void 0")
+                for _ in 0..<30 { if (try? await js("window.fileText")) as? String != nil { break }; await pause(0.1) }
+                try check(try await js("window.fileText") as? String == "synthetic upload 한글\n", "actual picker delivered exact synthetic bytes to page")
+                NSApp.terminate(nil)
+                return
+            }
             if mode == "busy-quit" {
                 try Data().write(to: root.appendingPathComponent("busy"))
                 controller.refresh(); await pause(0.2)
@@ -84,11 +116,13 @@ import WebKit
                 NSApp.terminate(nil)
                 return
             }
-            if mode == "duplicate" {
+            if mode == "duplicate" || mode == "simultaneous" {
+                if mode == "duplicate" {
                 let duplicate = Process()
                 duplicate.executableURL = URL(fileURLWithPath: "/usr/bin/open")
                 duplicate.arguments = ["-n", "-a", Bundle.main.bundleURL.path]
                 try duplicate.run()
+                }
                 await pause(2)
                 let matching = NSRunningApplication.runningApplications(withBundleIdentifier: Bundle.main.bundleIdentifier!).filter { $0.bundleURL?.standardizedFileURL == Bundle.main.bundleURL.standardizedFileURL }
                 try check(matching.count == 1, "explicit duplicate launch coalesces to one installed app instance")
@@ -124,6 +158,12 @@ import WebKit
             _ = try await js("location.href='https://example.invalid/automatic'")
             await pause()
             try check(try await js("window.docID") as? String == document, "automatic external navigation blocked")
+            let windowCount = NSApp.windows.filter { $0.isVisible }.count
+            _ = try await js("window.open('https://example.invalid/automatic-popup');window.open('/automatic-popup');void 0")
+            await pause()
+            try check(external.isEmpty, "automatic external popup never dispatched")
+            try check(try await js("window.docID") as? String == document, "automatic same-origin popup preserves document")
+            try check(NSApp.windows.filter { $0.isVisible }.count == windowCount, "automatic popup creates no native window")
             _ = try await js("document.querySelector('#external').click()")
             await pause()
             try check(external.count == 1, "explicit external link intercepted without browser")
@@ -160,7 +200,7 @@ import WebKit
         let app = StickerApplication.shared; app.setActivationPolicy(.regular)
         let scenario = Scenario(root: root)
         app.delegate = scenario.controller
-        let deadline: Double = ProcessInfo.processInfo.environment["STICKER_FIXTURE_MODE"] == "download" ? 200 : 100
+        let deadline: Double = ["download", "file-select"].contains(ProcessInfo.processInfo.environment["STICKER_FIXTURE_MODE"] ?? "") ? 200 : 100
         Timer.scheduledTimer(withTimeInterval: deadline, repeats: false) { _ in print("FAIL overall timeout"); fflush(stdout); exit(1) }
         Task { await scenario.run() }
         withExtendedLifetime(scenario) { app.run() }

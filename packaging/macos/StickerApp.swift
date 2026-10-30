@@ -55,7 +55,16 @@ final class StickerApp: NSObject, NSApplicationDelegate, NSWindowDelegate, WKNav
             let y = try? FileManager.default.attributesOfItem(atPath: b.path)
             return x?[.systemFileNumber] as? NSNumber == y?[.systemFileNumber] as? NSNumber && x?[.systemNumber] as? NSNumber == y?[.systemNumber] as? NSNumber && x != nil && y != nil
         }
-        if let existing = siblings.filter({ ($0.launchDate ?? .distantPast) < (own.launchDate ?? .distantFuture) || ($0.launchDate == own.launchDate && $0.processIdentifier < own.processIdentifier) }).first {
+        #if STICKER_NATIVE_TRACE
+        print("TRACE election own=\(own.processIdentifier):\(String(describing: own.launchDate)):finished=\(own.isFinishedLaunching) siblings=\(siblings.map { "\($0.processIdentifier):\(String(describing: $0.launchDate)):finished=\($0.isFinishedLaunching)" })"); fflush(stdout)
+        #endif
+        // Directly executed app bundles can lack launchDate. Use one ordering for
+        // the entire observed group so raw/LaunchServices launches cannot disagree.
+        let useProcessOrder = own.launchDate == nil || siblings.contains { $0.launchDate == nil }
+        if let existing = siblings.filter({ candidate in
+            if useProcessOrder { return candidate.processIdentifier < own.processIdentifier }
+            return candidate.launchDate! < own.launchDate! || (candidate.launchDate == own.launchDate && candidate.processIdentifier < own.processIdentifier)
+        }).first {
             DistributedNotificationCenter.default().postNotificationName(notificationName, object: Bundle.main.bundleURL.path, userInfo: nil, deliverImmediately: true)
             existing.activate(options: [.activateIgnoringOtherApps])
             NSApp.terminate(nil)
@@ -303,7 +312,8 @@ final class StickerApp: NSObject, NSApplicationDelegate, NSWindowDelegate, WKNav
         panel.beginSheetModal(for: window) { [weak self] result in
             self?.finishedPanel(key)
             guard result == .OK, let url = panel.url, (try? FileManager.default.attributesOfItem(atPath: url.path)) == nil else { once.resolve(nil); return }
-            // WebKit requires a nonexistent destination and fails if it appears before writing.
+            // WebKit requires a nonexistent destination. A racing destination may fail or
+            // remain pending on some WebKit versions; cancellation must preserve it.
             self?.showMessage("다운로드 중 · 메뉴바에서 취소할 수 있습니다.")
             once.resolve(url)
         }

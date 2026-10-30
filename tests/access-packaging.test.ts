@@ -1102,6 +1102,42 @@ void test(
         "utf8",
       );
       assert.equal(manifest.split("\n")[3], "desktop-linux");
+      assert.equal(
+        f.run("--mac", target).status,
+        0,
+        "same-owner reinstall succeeds",
+      );
+      const previousExecutable = readFileSync(executable);
+      const previousCore = readFileSync(
+        join(f.source, "packaging/macos/AccessCore.swift"),
+      );
+      writeFileSync(
+        join(f.source, "packaging/macos/AccessCore.swift"),
+        "this is deliberately invalid Swift\n",
+      );
+      assert.notEqual(
+        f.run("--mac", target).status,
+        0,
+        "compiler failure refuses replacement",
+      );
+      assert.deepEqual(readFileSync(executable), previousExecutable);
+      assert.equal(
+        readFileSync(join(target, "Contents/Resources/sticker-source"), "utf8"),
+        manifest,
+      );
+      assert.equal(
+        spawnSync("/usr/bin/codesign", [
+          "--verify",
+          "--deep",
+          "--strict",
+          target,
+        ]).status,
+        0,
+      );
+      writeFileSync(
+        join(f.source, "packaging/macos/AccessCore.swift"),
+        previousCore,
+      );
       writeFileSync(
         join(f.temp, "bin/docker"),
         "#!/bin/sh\necho other-context\n",

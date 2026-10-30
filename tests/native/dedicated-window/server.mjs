@@ -34,6 +34,19 @@ const server = createServer((req, res) => {
     res.end(html);
     return;
   }
+  if (req.url === "/redirect-download") {
+    res.writeHead(302, { Location: "/download-final" }).end();
+    return;
+  }
+  if (req.url === "/download-final") {
+    res
+      .writeHead(200, {
+        "Content-Type": "application/octet-stream",
+        "Content-Disposition": 'attachment; filename="redirect.txt"',
+      })
+      .end("redirect must not be followed");
+    return;
+  }
   if (req.url === "/metrics") {
     res.setHeader("Content-Type", "application/json");
     res.end(JSON.stringify({ loads }));
