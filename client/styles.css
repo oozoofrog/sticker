@@ -4205,6 +4205,8 @@ main {
 }
 .issue-markdown th,
 .issue-markdown td {
+  min-width: 6em;
+  vertical-align: top;
   border: 1px solid #dce0d4;
   padding: 6px 9px;
 }

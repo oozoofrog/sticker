@@ -1,6 +1,24 @@
-import { test, expect } from "@playwright/test";
+import { test, expect, type Locator } from "@playwright/test";
 import { createDocumentJourneyProject } from "../document-journey-fixture.js";
 import { issueDetailSchema } from "../../server/response-schemas.js";
+
+async function expectLegibleResult(container: Locator) {
+  // A long neighboring cell must not squeeze two Korean characters onto two lines.
+  for (const cell of [
+    container.getByRole("columnheader", { name: "결과", exact: true }),
+    container.getByRole("cell", { name: "통과", exact: true }),
+  ]) {
+    expect(
+      await cell.evaluate((element) => {
+        const range = document.createRange();
+        range.selectNodeContents(element);
+        return Array.from(range.getClientRects()).filter(
+          (rect) => rect.width > 0,
+        ).length;
+      }),
+    ).toBe(1);
+  }
+}
 
 test("issue source survives preview, save, comments and reload with inert narrow-layout Markdown", async ({
   page,
@@ -44,7 +62,7 @@ test("issue source survives preview, save, comments and reload with inert narrow
   const source =
     "# 구현 계획\n\n첫 줄\n둘째 줄\n\n1. **분석**\n2. *검증*\n\n- [x] 완료\n\n| 항목 | 결과 |\n|---|---|\n| " +
     "long".repeat(90) +
-    " | 통과 |\n\n```html\n<script>literal</script>\n" +
+    " | 통과 |\n\n| 열1 | 열2 | 열3 | 열4 | 열5 | 열6 | 열7 | 열8 |\n|---|---|---|---|---|---|---|---|\n| 값1 | 값2 | 값3 | 값4 | 값5 | 값6 | 값7 | 값8 |\n\n```html\n<script>literal</script>\n" +
     "code".repeat(110) +
     "\n```\n\n![원격](https://markdown-external.test/image)\n<script>alert(1)</script>\n[위험](javascript:alert)\n";
   await page.goto(`/#project=${project.id}&issue=${issue.id}`);
@@ -72,6 +90,22 @@ test("issue source survives preview, save, comments and reload with inert narrow
   await expect(
     editor.getByRole("textbox", { name: "설명", exact: true }),
   ).toBeHidden();
+  await expectLegibleResult(editor);
+  const wideTable = editor.locator(".markdown-table").nth(1);
+  expect(
+    await wideTable.evaluate(
+      (element) => element.scrollWidth > element.clientWidth,
+    ),
+  ).toBe(true);
+  await wideTable.focus();
+  await page.keyboard.press("ArrowRight");
+  await expect
+    .poll(() => wideTable.evaluate((element) => element.scrollLeft))
+    .toBeGreaterThan(0);
+
+  await editor
+    .getByRole("columnheader", { name: "결과", exact: true })
+    .scrollIntoViewIfNeeded();
   await page.screenshot({
     path: info.outputPath("issue-markdown-preview.png"),
     fullPage: true,
@@ -121,6 +155,7 @@ test("issue source survives preview, save, comments and reload with inert narrow
     ),
   ).toHaveCount(0);
   expect(remoteRequests).toEqual([]);
+  await expectLegibleResult(panel);
   expect(await panel.evaluate((el) => el.scrollWidth <= el.clientWidth)).toBe(
     true,
   );
