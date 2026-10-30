@@ -118,11 +118,15 @@ void test("GitHub evidence card never attributes old successful CI to a new SHA 
     cleanup();
   }
 });
-void test("connection editor requires explicit read consent and preserves repository draft on conflict", async () => {
+void test("connection editor has explicit no-source state and no identifier-entry fallback", async () => {
   const { GithubConnectionEditor } =
     await import("../../client/features/github/GithubConnectionEditor.js");
-  const user = userEvent.setup({ document: dom.window.document });
+  const original = globalThis.fetch;
   let calls = 0;
+  globalThis.fetch = () =>
+    Promise.resolve(
+      Response.json({ revision: 0, providerEnabled: true, sources: [] }),
+    );
   try {
     render(
       <GithubConnectionEditor
@@ -134,7 +138,7 @@ void test("connection editor requires explicit read consent and preserves reposi
           revision: 0,
           principalLabel: "공개 조회",
           credentialConfigured: false,
-          providerEnabled: false,
+          providerEnabled: true,
           permissionsVerified: false,
           lastVerifiedAt: null,
           lastErrorCode: null,
@@ -142,29 +146,22 @@ void test("connection editor requires explicit read consent and preserves reposi
         onClose={() => {}}
         onConnect={() => {
           calls++;
-          return Promise.reject(new Error("revision conflict"));
+          return Promise.resolve();
         }}
       />,
     );
-    await user.type(screen.getByLabelText("저장소 소유자"), "octocat");
-    await user.type(screen.getByLabelText("저장소 이름"), "project");
+    await screen.findByText(/선택 가능한 계정 없음/);
+    assert.equal(screen.queryByLabelText("저장소 소유자"), null);
+    assert.equal(screen.queryByLabelText("자격증명 설정 참조"), null);
     assert.equal(
       screen.getByRole<HTMLButtonElement>("button", { name: "저장소 연결" })
         .disabled,
       true,
     );
     assert.equal(calls, 0);
-    await user.click(screen.getByLabelText("이 저장소의 읽기 조회 허용"));
-    await user.click(screen.getByRole("button", { name: "저장소 연결" }));
-    await screen.findByText("revision conflict");
-    assert.equal(calls, 1);
-    assert.equal(
-      screen.getByLabelText<HTMLInputElement>("저장소 이름").value,
-      "project",
-    );
-    assert.equal(screen.queryByLabelText("토큰"), null);
   } finally {
     cleanup();
+    globalThis.fetch = original;
   }
 });
 void test("GitHub issue workspace uses cached reads only, preserves add drafts on errors and renders confirmed refresh without a following GET", async () => {
@@ -256,6 +253,23 @@ void test("GitHub settings require confirmed connection and explicit disconnect 
         return Promise.resolve();
       },
       inspect: () => Promise.reject(new Error("unused")),
+      listRepositories: () =>
+        Promise.resolve({
+          items: [
+            {
+              id: 1,
+              repository: { owner: "octocat", name: "project" },
+              visibility: "public",
+              archived: false,
+              disabled: false,
+            },
+          ],
+          hasMore: false,
+        }),
+      verifySelection: () => {
+        calls++;
+        return Promise.resolve();
+      },
     }),
   });
   const original = globalThis.fetch;
@@ -272,12 +286,32 @@ void test("GitHub settings require confirmed connection and explicit disconnect 
       : original(input, init);
   const user = userEvent.setup({ document: dom.window.document });
   try {
+    await f.call(`/projects/${f.other.id}/github`, "owner", "PUT", {
+      repository: { owner: "octocat", name: "seed" },
+      mode: "public",
+      revision: 0,
+      confirm: true,
+    });
     render(<GithubSettings projectId={f.project.id} onClose={() => {}} />);
     await screen.findByText("연결 안 됨");
     await user.click(screen.getByRole("button", { name: "저장소 설정" }));
     const editor = screen.getByRole("dialog", { name: "GitHub 저장소 연결" });
-    await user.type(within(editor).getByLabelText("저장소 소유자"), "octocat");
-    await user.type(within(editor).getByLabelText("저장소 이름"), "project");
+    const sourceOption = await within(editor).findByRole<HTMLOptionElement>(
+      "option",
+      { name: /octocat · 공개 저장소/ },
+    );
+    await user.selectOptions(
+      within(editor).getByLabelText("조회 주체"),
+      sourceOption.value,
+    );
+    const repoOption = await within(editor).findByRole<HTMLOptionElement>(
+      "option",
+      { name: /octocat\/project/ },
+    );
+    await user.selectOptions(
+      within(editor).getByLabelText("저장소"),
+      repoOption.value,
+    );
     await user.click(
       within(editor).getByLabelText("이 저장소의 읽기 조회 허용"),
     );
@@ -285,10 +319,14 @@ void test("GitHub settings require confirmed connection and explicit disconnect 
       within(editor).getByRole("button", { name: "저장소 연결" }),
     );
     await screen.findByText("octocat/project");
-    assert.equal(calls, 0);
+    assert.equal(calls, 1);
     await user.click(screen.getByRole("button", { name: "연결 확인" }));
     await screen.findByText("확인 완료");
-    assert.equal(calls, 1);
+    assert.equal(calls, 2);
+    await f.call(`/projects/${f.other.id}/github`, "owner", "DELETE", {
+      revision: 1,
+      confirm: true,
+    });
     await user.click(screen.getByRole("button", { name: "연결 해제" }));
     const confirmation = screen.getByRole("dialog", {
       name: "GitHub 연결 해제",
@@ -297,7 +335,23 @@ void test("GitHub settings require confirmed connection and explicit disconnect 
       within(confirmation).getByRole("button", { name: "해제하기" }),
     );
     await screen.findByText("연결 안 됨");
-    assert.equal(calls, 1);
+    assert.equal(calls, 2);
+    await user.click(screen.getByRole("button", { name: "저장소 설정" }));
+    const previous = await screen.findByRole<HTMLOptionElement>("option", {
+      name: /octocat · 이전 공개 연결/,
+    });
+    await user.selectOptions(
+      screen.getByLabelText("조회 주체"),
+      previous.value,
+    );
+    const recovered = await screen.findByRole<HTMLOptionElement>("option", {
+      name: /octocat\/project/,
+    });
+    await user.selectOptions(screen.getByLabelText("저장소"), recovered.value);
+    await user.click(screen.getByLabelText("이 저장소의 읽기 조회 허용"));
+    await user.click(screen.getByRole("button", { name: "저장소 연결" }));
+    await screen.findByText("연결됨");
+    assert.equal(calls, 3);
   } finally {
     cleanup();
     globalThis.fetch = original;
@@ -348,7 +402,27 @@ void test("pending settings GET cannot silently rebase a connection draft; confl
   const { sessionHttpFixture, sessionOwner } =
     await import("../session-fixture.js");
   const { act, waitFor } = await import("@testing-library/react");
-  const f = await sessionHttpFixture(),
+  const f = await sessionHttpFixture({
+      enabled: true,
+      client: () => ({
+        verify: () => Promise.resolve(),
+        inspect: () => Promise.reject(new Error("unused")),
+        verifySelection: () => Promise.resolve(),
+        listRepositories: () =>
+          Promise.resolve({
+            items: [
+              {
+                id: 1,
+                repository: { owner: "octocat", name: "local-draft" },
+                visibility: "public",
+                archived: false,
+                disabled: false,
+              },
+            ],
+            hasMore: false,
+          }),
+      }),
+    }),
     original = globalThis.fetch;
   const path = `/projects/${f.project.id}/github`;
   f.instance.store.github.connect(sessionOwner, f.project.id, {
@@ -394,8 +468,17 @@ void test("pending settings GET cannot silently rebase a connection draft; confl
       assert.equal(gets, 2);
     });
     await user.click(screen.getByRole("button", { name: "저장소 설정" }));
-    await user.clear(screen.getByLabelText("저장소 이름"));
-    await user.type(screen.getByLabelText("저장소 이름"), "local-draft");
+    const sourceOption = await screen.findByRole<HTMLOptionElement>("option", {
+      name: /octocat · 공개 저장소/,
+    });
+    await user.selectOptions(
+      screen.getByLabelText("조회 주체"),
+      sourceOption.value,
+    );
+    const repoOption = await screen.findByRole<HTMLOptionElement>("option", {
+      name: /octocat\/local-draft/,
+    });
+    await user.selectOptions(screen.getByLabelText("저장소"), repoOption.value);
     f.instance.store.github.connect(sessionOwner, f.project.id, {
       repository: { owner: "octocat", name: "remote-new" },
       mode: "public",
@@ -408,27 +491,32 @@ void test("pending settings GET cannot silently rebase a connection draft; confl
     });
     await user.click(screen.getByLabelText("이 저장소의 읽기 조회 허용"));
     await user.click(screen.getByRole("button", { name: "저장소 연결" }));
-    await screen.findByText(
-      /연결 또는 근거가 변경되었습니다\. 최신 상태를 확인하세요\./,
-    );
+    await screen.findByText(/저장소 선택이 만료되었거나 변경되었습니다/);
     assert.equal(
       f.instance.store.github.connection(sessionOwner, f.project.id).repository
         ?.name,
       "remote-new",
     );
     assert.equal(
-      screen.getByLabelText<HTMLInputElement>("저장소 이름").value,
-      "local-draft",
+      screen.getByLabelText<HTMLSelectElement>("저장소").value,
+      repoOption.value,
     );
     await user.click(screen.getByRole("button", { name: "최신 연결 확인" }));
     await screen.findByText("octocat/remote-new");
     await user.click(
-      screen.getByRole("button", { name: "이 버전 기준으로 검토" }),
+      screen.getByRole("button", { name: "이 버전 기준으로 다시 선택" }),
     );
-    assert.equal(
-      screen.getByLabelText<HTMLInputElement>("저장소 이름").value,
-      "local-draft",
+    const freshSource = await screen.findByRole<HTMLOptionElement>("option", {
+      name: /octocat · 공개 저장소/,
+    });
+    await user.selectOptions(
+      screen.getByLabelText("조회 주체"),
+      freshSource.value,
     );
+    const freshRepo = await screen.findByRole<HTMLOptionElement>("option", {
+      name: /octocat\/local-draft/,
+    });
+    await user.selectOptions(screen.getByLabelText("저장소"), freshRepo.value);
     assert.equal(
       screen.getByRole<HTMLButtonElement>("button", {
         name: "저장소 연결",

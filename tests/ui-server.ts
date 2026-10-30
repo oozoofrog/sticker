@@ -36,6 +36,12 @@ const project = instance.store.createProject(owner, {
   key: "SESS",
   name: "세션 브라우저 검증",
 });
+instance.store.github.connect(owner, project.id, {
+  repository: { owner: "octocat", name: "fixture-source" },
+  mode: "public",
+  revision: 0,
+  confirm: true,
+});
 instance.store.createProject(owner, {
   key: "EMPTY",
   name: "빈 세션 프로젝트",

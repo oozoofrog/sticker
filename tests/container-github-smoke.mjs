@@ -27,6 +27,10 @@ const before = await api("/bootstrap"),
 assert.ok(project && issue, "Only the disposable core fixture is accepted");
 const path = `/projects/${project.id}/github`;
 const original = await api(path);
+const discovery = await api(`${path}/sources`);
+assert.equal(discovery.providerEnabled, false);
+assert.deepEqual(discovery.sources, []);
+assert.equal(discovery.revision, original.revision);
 assert.equal(
   original.providerEnabled,
   false,
