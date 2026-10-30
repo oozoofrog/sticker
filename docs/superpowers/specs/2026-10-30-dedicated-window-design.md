@@ -15,7 +15,7 @@ Browser automation would require broader browser permissions and could disturb p
 - JS dialogs and file panels complete once; user cancellation is cancellation. OS/menu quit during a panel cancels that panel through its normal callback; busy service tasks finish and clean up before app termination.
 - Downloads use WebKit to a user-selected nonexistent file, with no overwrite fallback. A native race test must prove an existing file is preserved after selection and before WebKit writes. If this contract fails, do not claim completion or add a custom writer.
 - Explicit compiler prerequisite: installed Swift >=5.7 and macOS SDK >=11.3. No automatic developer-tool installation, new entitlement, Developer ID credential or policy modification.
-- No PR93/99/101 code, production replacement, new auth/network grants or automatic Dock/login registration.
+- No unmerged PR93 code, unreviewed production replacement, new auth/network grants or automatic Dock/login registration.
 
 ## Verification
 

@@ -12,7 +12,7 @@
 
 ## Global Constraints
 
-- Base af81491b0cb09e5109e5859a6bfad8ae7e54ad11; unmerged PR93/99/101 excluded.
+- Integration base 99983cb7a9fda9bc83ef259836e56153719e1ad1 (the user-approved merged maintenance/Markdown/dependency updates); PR93 remains excluded. Original native candidate and evidence were preserved on the af81491-based worktree.
 - No new dependencies, OS grants, entitlements, signing credentials or production replacement.
 - Browser dispatch is intercepted in fixtures; Docker is always mocked in native testing.
 - New build/cache data stays on eyedisk; small native UI fixture may use private system tmp.
