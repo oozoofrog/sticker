@@ -87,5 +87,10 @@ try {
     child.kill("SIGTERM");
     await new Promise((r) => child.once("exit", r));
   }
+  assert.equal(
+    child.exitCode,
+    0,
+    "Compiled server must gracefully close on SIGTERM",
+  );
   rmSync(directory, { recursive: true, force: true });
 }

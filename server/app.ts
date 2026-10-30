@@ -1,3 +1,5 @@
+import { MaintenanceController } from "./maintenance.js";
+import { registerMaintenanceRoutes } from "./routes/maintenance.js";
 import {
   LocalOwnerPolicy,
   localOwnerActor,
@@ -40,6 +42,7 @@ function passwordInput(body: unknown): unknown {
     : undefined;
 }
 export function createApp(config: AppConfig) {
+  const maintenance = new MaintenanceController();
   const mode = localOwnerMode(config.localOwnerMode);
   const localPolicy = mode
     ? new LocalOwnerPolicy(config.appOrigin ?? "http://localhost:8787")
@@ -93,6 +96,15 @@ export function createApp(config: AppConfig) {
     next();
   });
   app.get("/healthz", (_req, res) => res.json({ status: "ok" }));
+  app.get("/readyz", (_req, res) =>
+    res
+      .set("Cache-Control", "no-store")
+      .status(maintenance.snapshot().state === "serving" ? 200 : 503)
+      .json({
+        status:
+          maintenance.snapshot().state === "serving" ? "ready" : "maintenance",
+      }),
+  );
   app.use("/api", (_req, res, next) => {
     res.set("Cache-Control", "no-store");
     next();
@@ -150,6 +162,8 @@ export function createApp(config: AppConfig) {
       throw new DomainError(403, "ORIGIN", "허용되지 않은 요청 출처입니다.");
     next();
   });
+  app.use("/api", maintenance.admit);
+  registerMaintenanceRoutes(app, maintenance);
   app.get("/api/access-mode", (_req, res) =>
     res.json({ mode: mode ?? "password" }),
   );
@@ -168,10 +182,10 @@ export function createApp(config: AppConfig) {
       .end();
   });
   registerHistoryRoutes(app, store.history);
-  registerGithubRoutes(app, store.github);
+  registerGithubRoutes(app, store.github, maintenance);
   registerMcpSettingsRoutes(app, () => auth.directory());
   registerTemplateRoutes(app, store.templates);
-  registerResourceRoutes(app, store.resources, files);
+  registerResourceRoutes(app, store.resources, files, maintenance);
   registerSessionRoutes(app, store.sessions);
   registerRelationRoutes(app, store.relations);
   registerViewRoutes(app, store.views);
@@ -249,7 +263,7 @@ export function createApp(config: AppConfig) {
         throw new DomainError(403, "READ_ONLY", "읽기 전용 접근 권한입니다.");
       next();
     },
-    (req, res, next) =>
+    maintenance.trackMiddleware((req, res, next) =>
       upload(req, res, (error) => {
         if (error && !(error instanceof multer.MulterError)) {
           next(
@@ -263,6 +277,7 @@ export function createApp(config: AppConfig) {
         }
         next(error);
       }),
+    ),
     (req, res) => {
       if (!req.file)
         throw new DomainError(400, "FILE_REQUIRED", "파일 하나를 선택하세요.");
@@ -416,6 +431,7 @@ export function createApp(config: AppConfig) {
   return {
     app,
     store,
+    maintenance,
     close: () => {
       store.close();
     },
