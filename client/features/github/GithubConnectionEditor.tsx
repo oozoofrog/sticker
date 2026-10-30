@@ -1,59 +1,241 @@
-import React, { useState } from "react";
-import type { z } from "zod";
+import React, { useCallback, useEffect, useRef, useState } from "react";
+import type { GithubConnection } from "../../../server/contracts/github.js";
 import {
-  githubConnectSchema,
-  type GithubConnection,
-} from "../../../server/contracts/github.js";
+  githubDiscoverySourcesSchema,
+  githubDiscoveryPageSchema,
+  githubSelectionStatusSchema,
+  type GithubDiscoverySources,
+  type GithubDiscoveryPage,
+  type GithubSelectionConnect,
+} from "../../../server/contracts/github-discovery.js";
 import { Modal, Field, ErrorNotice } from "../../components.js";
-import { ApiError, errorText } from "../../api.js";
+import { api, json, ApiError, errorText } from "../../api.js";
+type Selection = GithubDiscoveryPage["repositories"][number];
 export function GithubConnectionEditor({
   connection,
   onClose,
   onConnect,
   onReload,
+  onResolved,
 }: {
   connection: GithubConnection;
   onClose: () => void;
+  onConnect: (input: GithubSelectionConnect) => Promise<void>;
   onReload?: () => Promise<GithubConnection>;
-  onConnect: (input: z.infer<typeof githubConnectSchema>) => Promise<void>;
+  onResolved?: (value: GithubConnection) => void;
 }) {
+  const path = `/projects/${connection.projectId}/github`;
   const [revision, setRevision] = useState(connection.revision),
-    [conflict, setConflict] = useState(false),
-    [latest, setLatest] = useState<GithubConnection | null>(null),
-    [loadingLatest, setLoadingLatest] = useState(false);
-  const [owner, setOwner] = useState(connection.repository?.owner ?? ""),
-    [name, setName] = useState(connection.repository?.name ?? ""),
-    [mode, setMode] = useState(connection.mode),
-    [reference, setReference] = useState(""),
-    [confirm, setConfirm] = useState(false),
+    [sources, setSources] = useState<GithubDiscoverySources | null>(null),
+    [sourceId, setSourceId] = useState(""),
+    [items, setItems] = useState<Selection[]>([]),
+    [selectionId, setSelectionId] = useState(""),
+    [cursor, setCursor] = useState<string | null>(null),
+    [limit, setLimit] = useState(false),
+    [loading, setLoading] = useState(false),
     [busy, setBusy] = useState(false),
-    [error, setError] = useState("");
-  async function submit(event: React.SyntheticEvent<HTMLFormElement>) {
-    event.preventDefault();
-    if (busy || conflict || loadingLatest) return;
-    setError("");
-    const parsed = githubConnectSchema.safeParse({
-      repository: { owner: owner.trim(), name: name.trim() },
-      mode,
-      ...(mode === "authenticated" ? { credentialRef: reference.trim() } : {}),
-      revision,
-      confirm,
+    [confirm, setConfirm] = useState(false),
+    [error, setError] = useState(""),
+    [review, setReview] = useState(false),
+    [latest, setLatest] = useState<GithubConnection | null>(null),
+    [uncertain, setUncertain] = useState<GithubSelectionConnect | null>(null);
+  const initialRevision = useRef(connection.revision);
+  const sequence = useRef(0),
+    alive = useRef(true),
+    controller = useRef<AbortController | null>(null);
+  const selected = items.find((item) => item.selectionId === selectionId),
+    source = sources?.sources.find((item) => item.id === sourceId);
+  const isCurrent = useCallback(
+    (ticket: number) => alive.current && ticket === sequence.current,
+    [],
+  );
+  const invalidate = useCallback(() => {
+    sequence.current++;
+    controller.current?.abort();
+  }, []);
+  const clearDenied = useCallback((error: unknown) => {
+    if (error instanceof ApiError && [401, 403, 404].includes(error.status)) {
+      setLatest(null);
+      setSources(null);
+      setSourceId("");
+      setItems([]);
+      setSelectionId("");
+      setCursor(null);
+      setConfirm(false);
+    }
+  }, []);
+  const loadSources = useCallback(
+    async (expected: number) => {
+      const ticket = ++sequence.current;
+      controller.current?.abort();
+      const abort = new AbortController();
+      controller.current = abort;
+      await Promise.resolve();
+      if (!isCurrent(ticket)) return;
+      setLoading(true);
+      setError("");
+      setSources(null);
+      setSourceId("");
+      setItems([]);
+      setSelectionId("");
+      setConfirm(false);
+      setCursor(null);
+      setLimit(false);
+      try {
+        const next = await api(
+          `${path}/sources`,
+          { signal: abort.signal },
+          githubDiscoverySourcesSchema,
+        );
+        if (!isCurrent(ticket)) return;
+        if (next.revision !== expected) {
+          setReview(true);
+          setError("연결이 변경되었습니다. 최신 연결을 확인하세요.");
+          return;
+        }
+        setSources(next);
+      } catch (e) {
+        if (isCurrent(ticket) && !abort.signal.aborted) setError(errorText(e));
+      } finally {
+        if (isCurrent(ticket)) setLoading(false);
+      }
+    },
+    [path, isCurrent],
+  );
+  useEffect(() => {
+    alive.current = true;
+    queueMicrotask(() => {
+      void loadSources(initialRevision.current);
     });
-    if (!parsed.success) {
-      setError("저장소와 조회 동의를 확인하세요.");
+    return () => {
+      alive.current = false;
+      invalidate();
+    };
+  }, [loadSources, invalidate]);
+  async function loadPage(id: string, nextCursor?: string) {
+    const ticket = ++sequence.current;
+    controller.current?.abort();
+    const abort = new AbortController();
+    controller.current = abort;
+    setLoading(true);
+    setError("");
+    setConfirm(false);
+    setSelectionId("");
+    if (!nextCursor) {
+      setItems([]);
+      setCursor(null);
+      setLimit(false);
+    }
+    setSourceId(id);
+    if (!id) {
+      setLoading(false);
       return;
     }
-    setBusy(true);
     try {
-      await onConnect(parsed.data);
+      const value = await api(
+        `${path}/repositories`,
+        {
+          method: "POST",
+          body: json({
+            sourceId: id,
+            ...(nextCursor ? { cursor: nextCursor } : {}),
+          }),
+          signal: abort.signal,
+        },
+        githubDiscoveryPageSchema,
+      );
+      if (!isCurrent(ticket)) return;
+      if (value.sourceId !== id || value.revision !== revision)
+        throw new Error("저장소 목록이 변경되었습니다. 다시 선택하세요.");
+      setItems((old) => {
+        const all = nextCursor
+          ? [...old, ...value.repositories]
+          : value.repositories;
+        return all.filter(
+          (item, index) =>
+            all.findIndex((candidate) => candidate.id === item.id) === index,
+        );
+      });
+      setCursor(value.nextCursor);
+      setLimit(value.limitReached);
     } catch (e) {
-      setError(errorText(e));
-      if (e instanceof ApiError && e.status === 409) {
-        setConflict(true);
-        setLatest(null);
+      if (
+        alive.current &&
+        ticket === sequence.current &&
+        !abort.signal.aborted
+      ) {
+        clearDenied(e);
+        setError(errorText(e));
+        setItems([]);
+        setCursor(null);
+        if (e instanceof ApiError && e.status === 409) setReview(true);
       }
     } finally {
-      setBusy(false);
+      if (isCurrent(ticket)) setLoading(false);
+    }
+  }
+  async function submit(event: React.SyntheticEvent<HTMLFormElement>) {
+    event.preventDefault();
+    if (
+      busy ||
+      loading ||
+      review ||
+      uncertain ||
+      !selected ||
+      !source ||
+      !confirm ||
+      selected.disabled
+    )
+      return;
+    const input: GithubSelectionConnect = {
+      sourceId,
+      selectionId,
+      revision,
+      confirm: true,
+    };
+    setBusy(true);
+    setError("");
+    try {
+      await onConnect(input);
+    } catch (e) {
+      if (!alive.current) return;
+      clearDenied(e);
+      setError(errorText(e));
+      setConfirm(false);
+      if (e instanceof ApiError && e.status === 409) setReview(true);
+      else setUncertain(input);
+    } finally {
+      if (alive.current) setBusy(false);
+    }
+  }
+  async function inspectSave() {
+    if (!uncertain || busy) return;
+    setBusy(true);
+    setError("");
+    try {
+      const status = await api(
+        `${path}/selection-status`,
+        { method: "POST", body: json(uncertain) },
+        githubSelectionStatusSchema,
+      );
+      if (!alive.current) return;
+      if (status.matches) {
+        onResolved?.(status.connection);
+        setError("선택한 저장소가 연결되어 있습니다.");
+      } else {
+        setLatest(status.connection);
+        setReview(true);
+        setUncertain(null);
+        setError("현재 연결이 선택 결과와 다릅니다. 최신 상태를 검토하세요.");
+      }
+    } catch (e) {
+      if (alive.current) {
+        clearDenied(e);
+        setError(errorText(e));
+        setReview(true);
+      }
+    } finally {
+      if (alive.current) setBusy(false);
     }
   }
   return (
@@ -64,42 +246,149 @@ export function GithubConnectionEditor({
       }}
     >
       <form
-        className="editor-form"
+        className="editor-form github-connection-editor"
         onSubmit={(e) => {
           void submit(e);
         }}
       >
         <ErrorNotice message={error} />
-        {conflict && onReload && (
-          <section className="github-conflict" aria-label="연결 충돌 검토">
+        {loading && <div role="status">저장소 목록 확인 중…</div>}
+        {sources && !sources.providerEnabled && (
+          <div role="status">GitHub 조회 공급자 비활성</div>
+        )}
+        {sources?.providerEnabled && sources.sources.length === 0 && (
+          <div role="status">
+            선택 가능한 계정 없음 · 기존 공개 연결 또는 설정된 인증 필요
+          </div>
+        )}
+        {sources && sources.sources.length > 0 && (
+          <Field label="조회 주체">
+            <select
+              value={sourceId}
+              disabled={busy || review || !!uncertain}
+              onChange={(e) => {
+                void loadPage(e.target.value);
+              }}
+            >
+              <option value="">선택하세요</option>
+              {sources.sources.map((item) => (
+                <option key={item.id} value={item.id}>
+                  {item.label} ·{" "}
+                  {item.mode === "public" ? "인증 없음" : "설정된 인증"}
+                </option>
+              ))}
+            </select>
+          </Field>
+        )}
+        {sourceId && !loading && items.length === 0 && !error && (
+          <div role="status">저장소 없음</div>
+        )}
+        {items.length > 0 && (
+          <Field label="저장소">
+            <select
+              value={selectionId}
+              disabled={busy || loading || review || !!uncertain}
+              onChange={(e) => {
+                setSelectionId(e.target.value);
+                setConfirm(false);
+              }}
+            >
+              <option value="">선택하세요</option>
+              {items.map((item) => (
+                <option
+                  key={item.id}
+                  value={item.selectionId}
+                  disabled={item.disabled}
+                >
+                  {item.repository.owner}/{item.repository.name} ·{" "}
+                  {item.visibility === "private" ? "비공개" : "공개"}
+                  {item.archived ? " · 보관됨" : ""}
+                  {item.disabled ? " · 이용 불가" : ""}
+                </option>
+              ))}
+            </select>
+          </Field>
+        )}
+        {cursor && (
+          <button
+            type="button"
+            disabled={busy || loading || review || !!uncertain}
+            onClick={() => {
+              void loadPage(sourceId, cursor);
+            }}
+          >
+            더 보기
+          </button>
+        )}
+        {limit && (
+          <div role="status">목록 조회 한도 도달 · 일부 저장소만 표시</div>
+        )}
+        {selected && (
+          <dl>
+            <div>
+              <dt>저장소</dt>
+              <dd>
+                {selected.repository.owner}/{selected.repository.name}
+              </dd>
+            </div>
+            <div>
+              <dt>조회 방식</dt>
+              <dd>
+                {source?.mode === "authenticated"
+                  ? "설정된 인증"
+                  : "공개 조회 · 인증 없음"}
+              </dd>
+            </div>
+            <div>
+              <dt>읽기 범위</dt>
+              <dd>선택 저장소의 PR · 커밋 · CI (GET)</dd>
+            </div>
+            <div>
+              <dt>토큰 권한</dt>
+              <dd>미검증</dd>
+            </div>
+          </dl>
+        )}
+        {uncertain && (
+          <button
+            type="button"
+            disabled={busy}
+            onClick={() => {
+              void inspectSave();
+            }}
+          >
+            저장 결과 확인
+          </button>
+        )}
+        {review && onReload && (
+          <section aria-label="연결 충돌 검토">
             <button
               type="button"
-              disabled={loadingLatest || busy}
+              disabled={busy || loading}
               onClick={() => {
-                setLoadingLatest(true);
+                setBusy(true);
                 void onReload()
                   .then(
                     (value) => {
-                      setLatest(value);
+                      if (alive.current) setLatest(value);
                     },
                     (e: unknown) => {
-                      setError(errorText(e));
+                      if (alive.current) {
+                        clearDenied(e);
+                        setError(errorText(e));
+                      }
                     },
                   )
                   .finally(() => {
-                    setLoadingLatest(false);
+                    if (alive.current) setBusy(false);
                   });
               }}
             >
-              {loadingLatest ? "확인 중…" : "최신 연결 확인"}
+              최신 연결 확인
             </button>
             {latest && (
               <>
                 <dl>
-                  <div>
-                    <dt>연결 주체</dt>
-                    <dd>{latest.principalLabel}</dd>
-                  </div>
                   <div>
                     <dt>최신 저장소</dt>
                     <dd>
@@ -109,14 +398,8 @@ export function GithubConnectionEditor({
                     </dd>
                   </div>
                   <div>
-                    <dt>연결 상태</dt>
-                    <dd>{latest.connected ? "연결됨" : "연결 안 됨"}</dd>
-                  </div>
-                  <div>
-                    <dt>조회 방식</dt>
-                    <dd>
-                      {latest.mode === "public" ? "공개 저장소" : "설정된 인증"}
-                    </dd>
+                    <dt>연결 주체</dt>
+                    <dd>{latest.principalLabel}</dd>
                   </div>
                   <div>
                     <dt>수정 버전</dt>
@@ -125,71 +408,37 @@ export function GithubConnectionEditor({
                 </dl>
                 <button
                   type="button"
-                  disabled={busy || loadingLatest}
+                  disabled={busy || loading}
                   onClick={() => {
                     setRevision(latest.revision);
-                    setConflict(false);
+                    setReview(false);
+                    setUncertain(null);
                     setLatest(null);
-                    setConfirm(false);
-                    setError("");
+                    void loadSources(latest.revision);
                   }}
                 >
-                  이 버전 기준으로 검토
+                  이 버전 기준으로 다시 선택
                 </button>
               </>
             )}
           </section>
         )}
-        <Field label="저장소 소유자">
-          <input
-            required
-            maxLength={39}
-            value={owner}
-            onChange={(e) => {
-              setOwner(e.target.value);
-            }}
-          />
-        </Field>
-        <Field label="저장소 이름">
-          <input
-            required
-            maxLength={100}
-            value={name}
-            onChange={(e) => {
-              setName(e.target.value);
-            }}
-          />
-        </Field>
-        <Field label="조회 방식">
-          <select
-            value={mode}
-            onChange={(e) => {
-              setMode(
-                e.target.value === "authenticated" ? "authenticated" : "public",
-              );
+        {!review && !uncertain && (
+          <button
+            type="button"
+            disabled={busy || loading}
+            onClick={() => {
+              void loadSources(revision);
             }}
           >
-            <option value="public">공개 저장소</option>
-            <option value="authenticated">설정된 인증 사용</option>
-          </select>
-        </Field>
-        {mode === "authenticated" && (
-          <Field label="자격증명 설정 참조">
-            <input
-              required
-              maxLength={64}
-              autoComplete="off"
-              value={reference}
-              onChange={(e) => {
-                setReference(e.target.value);
-              }}
-            />
-          </Field>
+            목록 새로고침
+          </button>
         )}
         <label className="github-confirm">
           <input
             type="checkbox"
             checked={confirm}
+            disabled={!selected || busy || loading || review || !!uncertain}
             onChange={(e) => {
               setConfirm(e.target.checked);
             }}
@@ -207,7 +456,9 @@ export function GithubConnectionEditor({
           </button>
           <button
             className="button primary"
-            disabled={busy || !confirm || conflict}
+            disabled={
+              busy || loading || !confirm || !selected || review || !!uncertain
+            }
           >
             {busy ? "연결 중…" : "저장소 연결"}
           </button>

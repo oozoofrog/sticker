@@ -8,6 +8,11 @@ import {
   type GithubCi,
   type GithubErrorCode,
 } from "./contracts/github.js";
+import {
+  githubRepositoryOptionSchema,
+  type GithubRepositoryPage,
+  type GithubRepositoryOption,
+} from "./contracts/github-discovery.js";
 const shaSchema = z.string().regex(/^[a-f0-9]{40}$/);
 const repoSchema = z.object({ full_name: z.string().max(150) });
 const prSchema = z.object({
@@ -161,6 +166,109 @@ export class GithubReadClient {
       if (error instanceof GithubReadError) throw error;
       throw new GithubReadError(signal.aborted ? "TIMEOUT" : "NETWORK");
     }
+  }
+  async verifySelection(selected: GithubRepositoryOption): Promise<void> {
+    const repo = this.repo(selected.repository);
+    const raw = await this.request(
+      this.path(repo),
+      z.object({
+        id: z.number().int().positive(),
+        full_name: z.string(),
+        private: z.boolean(),
+        disabled: z.boolean(),
+      }),
+      AbortSignal.timeout(Math.min(this.options.timeoutMs ?? 15000, 30000)),
+    );
+    if (
+      raw.id !== selected.id ||
+      raw.full_name.toLowerCase() !==
+        `${repo.owner}/${repo.name}`.toLowerCase() ||
+      raw.private !== (selected.visibility === "private") ||
+      raw.disabled ||
+      (!this.options.authenticated && raw.private)
+    )
+      throw new GithubReadError("REPOSITORY_MISMATCH");
+  }
+  async listRepositories(input: {
+    publicOwner?: string;
+    page: number;
+  }): Promise<GithubRepositoryPage> {
+    if (
+      !Number.isInteger(input.page) ||
+      input.page < 1 ||
+      input.page > 100 ||
+      !!input.publicOwner === !!this.options.authenticated
+    )
+      throw new GithubReadError("INVALID_RESPONSE");
+    const signal = AbortSignal.timeout(
+      Math.min(this.options.timeoutMs ?? 15000, 30000),
+    );
+    let path =
+      "/user/repos?visibility=all&affiliation=owner,collaborator,organization_member";
+    if (input.publicOwner) {
+      const owner = this.repo({
+        owner: input.publicOwner,
+        name: "placeholder",
+      }).owner;
+      const identity = await this.request(
+        `/users/${encodeURIComponent(owner)}`,
+        z.object({ login: z.string(), type: z.enum(["User", "Organization"]) }),
+        signal,
+      );
+      if (identity.login.toLowerCase() !== owner.toLowerCase())
+        throw new GithubReadError("REPOSITORY_MISMATCH");
+      path =
+        identity.type === "Organization"
+          ? `/orgs/${encodeURIComponent(owner)}/repos?type=public`
+          : `/users/${encodeURIComponent(owner)}/repos?type=owner`;
+    }
+    const rows = await this.request(
+      `${path}&sort=full_name&direction=asc&per_page=30&page=${String(input.page)}`,
+      z
+        .array(
+          z.object({
+            id: z.number().int().positive(),
+            name: z.string(),
+            full_name: z.string(),
+            owner: z.object({ login: z.string() }),
+            private: z.boolean(),
+            archived: z.boolean(),
+            disabled: z.boolean(),
+          }),
+        )
+        .max(30),
+      signal,
+    );
+    const seen = new Set<number>();
+    const items = rows
+      .map((row) => {
+        const repository = this.repo({
+          owner: row.owner.login,
+          name: row.name,
+        });
+        if (
+          row.full_name.toLowerCase() !==
+            `${repository.owner}/${repository.name}`.toLowerCase() ||
+          (input.publicOwner &&
+            (row.private ||
+              repository.owner.toLowerCase() !==
+                input.publicOwner.toLowerCase()))
+        )
+          throw new GithubReadError("REPOSITORY_MISMATCH");
+        return githubRepositoryOptionSchema.parse({
+          id: row.id,
+          repository,
+          visibility: row.private ? "private" : "public",
+          archived: row.archived,
+          disabled: row.disabled,
+        });
+      })
+      .filter((row) => {
+        if (seen.has(row.id)) return false;
+        seen.add(row.id);
+        return true;
+      });
+    return { items, hasMore: rows.length === 30 };
   }
   async verify(input: GithubRepository): Promise<void> {
     const repo = this.repo(input),

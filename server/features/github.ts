@@ -1,3 +1,8 @@
+import { GithubDiscovery } from "./github-discovery.js";
+import type {
+  GithubRepositoryPage,
+  GithubRepositoryOption,
+} from "../contracts/github-discovery.js";
 import { randomUUID } from "node:crypto";
 import { z } from "zod";
 import type { StoreContext } from "../store-context.js";
@@ -19,7 +24,12 @@ import {
   type GithubSnapshot,
   type GithubRepository,
 } from "../contracts/github.js";
-interface ReadClient {
+export interface ReadClient {
+  listRepositories?: (input: {
+    publicOwner?: string;
+    page: number;
+  }) => Promise<GithubRepositoryPage>;
+  verifySelection?: (selected: GithubRepositoryOption) => Promise<void>;
   verify(repository: GithubRepository): Promise<void>;
   inspect(target: ReturnType<typeof parseGithubUrl>): Promise<GithubSnapshot>;
 }
@@ -57,10 +67,19 @@ function parse<T>(schema: z.ZodType<T>, input: unknown): T {
   return value.data;
 }
 export class GithubService {
+  readonly discovery: GithubDiscovery;
   constructor(
     private readonly ctx: StoreContext,
     private readonly provider: GithubProvider = { enabled: false },
-  ) {}
+  ) {
+    this.discovery = new GithubDiscovery(ctx, provider, {
+      connection: (actor, projectId) => this.connection(actor, projectId),
+      connect: (actor, projectId, input) =>
+        this.connect(actor, projectId, input),
+      currentRef: (projectId) =>
+        this.connectionRow(projectId)?.credentialRef ?? null,
+    });
+  }
   private credential(ref: string) {
     const credentials = this.provider.credentials;
     return credentials && Object.hasOwn(credentials, ref)

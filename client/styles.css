@@ -3836,24 +3836,28 @@ main {
   overflow-wrap: anywhere;
 }
 .github-evidence-card dl,
-.github-settings dl {
+.github-settings dl,
+.github-connection-editor dl {
   display: grid;
   gap: 8px;
   margin: 0;
 }
 .github-evidence-card dl > div,
-.github-settings dl > div {
+.github-settings dl > div,
+.github-connection-editor dl > div {
   display: grid;
   grid-template-columns: minmax(85px, 0.35fr) minmax(0, 1fr);
   gap: 10px;
 }
 .github-evidence-card dt,
-.github-settings dt {
+.github-settings dt,
+.github-connection-editor dt {
   color: #62675d;
   font-size: 12px;
 }
 .github-evidence-card dd,
-.github-settings dd {
+.github-settings dd,
+.github-connection-editor dd {
   margin: 0;
   min-width: 0;
   overflow-wrap: anywhere;
@@ -3900,7 +3904,8 @@ main {
     padding: 11px;
   }
   .github-evidence-card dl > div,
-  .github-settings dl > div {
+  .github-settings dl > div,
+  .github-connection-editor dl > div {
     grid-template-columns: 1fr;
     gap: 3px;
   }
