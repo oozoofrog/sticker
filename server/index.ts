@@ -1,3 +1,4 @@
+import { createShutdown } from "./runtime-shutdown.js";
 import { githubProviderFromEnvironment } from "./github-provider-config.js";
 import { localOwnerMode } from "./local-owner.js";
 import { readFileSync } from "node:fs";
@@ -27,12 +28,22 @@ const server = instance.app.listen(
     );
   },
 );
+const stop = createShutdown({
+  server,
+  maintenance: instance.maintenance,
+  closeData: instance.close,
+});
+let exiting = false;
 function shutdown() {
-  server.close(() => {
-    instance.close();
-    process.exit(0);
+  if (exiting) return;
+  exiting = true;
+  void stop().then((drained) => {
+    if (!drained)
+      console.error(
+        "Sticker shutdown deadline exceeded or close failed; incomplete requests are not confirmed.",
+      );
+    process.exit(drained ? 0 : 1);
   });
-  setTimeout(() => process.exit(1), 10_000).unref();
 }
-process.once("SIGINT", shutdown);
-process.once("SIGTERM", shutdown);
+process.on("SIGINT", shutdown);
+process.on("SIGTERM", shutdown);

@@ -167,3 +167,17 @@ Codex 설정은 사용자가 직접 `~/.codex/config.toml` 또는 선택한 프�
 응답을 놓쳤다면 **같은 UUID, revision, 전체 입력**으로 재시도하세요. 동일 작업은 새 자료/버전을 만들지 않습니다. 같은 UUID로 다른 입력을 보내면 충돌합니다. 재시도 응답은 최초 작업 당시의 결과이며, 이후 수정·삭제된 현재 상태를 보증하지 않습니다. 후속 편집은 다시 조회한 현재 revision과 새 UUID를 사용하세요. 지침 지정·현재 프로젝트 접근 권한은 재확인됩니다.
 
 새 도구가 서버에서 제공돼도 기존 Codex의 `enabled_tools` 허용 목록과 실행 중 세션이 자동 갱신되지는 않습니다. 현재 연결의 허용 범위와 도구 발견 결과를 따로 확인해야 하며, 이 기능은 토큰·권한·클라이언트 설정을 자동 변경하지 않습니다.
+
+### 유지보수와 불확실한 쓰기 결과
+
+점검 중에는 `MAINTENANCE`/503, `retryAfterSeconds:5`, 서버 인스턴스·상태를 반환합니다. 자동 재전송이나 모든 작업자에게 통지하는 기능은 없습니다. 상세 계약은 [유지보수](MAINTENANCE.md)를 참고하세요.
+
+| 쓰기 도구                                                                                                                                          | 재시도 경계                                                                                                                               |
+| -------------------------------------------------------------------------------------------------------------------------------------------------- | ----------------------------------------------------------------------------------------------------------------------------------------- |
+| `sticker_create_document`, `sticker_update_document`, `sticker_upload_resource_file`, `sticker_link_resource`, `sticker_record_resource_reference` | 같은 `operationId`와 **동일한 원래 입력**으로 재전송. 과거 결과이므로 현재 자료는 별도 재조회.                                            |
+| `sticker_create_issue`                                                                                                                             | `operationId`를 사용한 생성만 중복 방지 계약 적용. 키 없이 생성한 요청은 자동 재전송하지 않음. 템플릿 사용 시 계약에 맞는 현재 버전 필요. |
+| `sticker_report_session_event`                                                                                                                     | 기존 세션/이벤트 식별자 중복 방지 계약 사용. 새 이벤트 ID를 만들어 재전송하면 다른 보고가 될 수 있음.                                     |
+| `sticker_update_project`, `sticker_update_version`, `sticker_update_issue`, `sticker_add_issue_relation`, `sticker_remove_issue_relation`          | revision/CAS는 충돌 방지이지 원래 요청 결과의 멱등 재생이 아님. 현재 상태·이력을 확인한 뒤 판단.                                          |
+| `sticker_create_version`, `sticker_add_comment`, `sticker_add_link`, `sticker_report_status`, `sticker_upload_file`                                | 일반 중복 방지 키 없음. 응답 유실 시 성공 여부를 다시 조회하고 자동 재전송하지 않음.                                                      |
+
+503 `MAINTENANCE`를 받은 요청은 업무 핸들러에 진입하지 않았습니다. 반면 연결 끊김/timeout/일반503 `api_unavailable`은 서버가 이미 작업을 완료했을 수도 있으므로 같은 의미로 취급하지 마세요. 조회 도구도 이 구현에서 자동 재시도하지 않습니다.

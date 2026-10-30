@@ -1,18 +1,29 @@
+import type { MaintenanceController } from "../maintenance.js";
 import type { Express } from "express";
 import type { GithubService } from "../features/github.js";
 import { requestActor as actor, requestId as id } from "../http-context.js";
 /** Register after the common authentication and origin middleware. */
-export function registerGithubRoutes(app: Express, github: GithubService) {
+export function registerGithubRoutes(
+  app: Express,
+  github: GithubService,
+  maintenance?: MaintenanceController,
+) {
+  const run = <T>(operation: () => Promise<T>): Promise<T> =>
+    maintenance ? maintenance.runOperation(operation) : operation();
   app.get("/api/projects/:id/github/sources", (req, res) =>
     res.json(github.discovery.sources(actor(req), id(req))),
   );
   app.post("/api/projects/:id/github/repositories", async (req, res) =>
     res.json(
-      await github.discovery.repositories(actor(req), id(req), req.body),
+      await run(() =>
+        github.discovery.repositories(actor(req), id(req), req.body),
+      ),
     ),
   );
   app.post("/api/projects/:id/github/select", async (req, res) =>
-    res.json(await github.discovery.connect(actor(req), id(req), req.body)),
+    res.json(
+      await run(() => github.discovery.connect(actor(req), id(req), req.body)),
+    ),
   );
   app.post("/api/projects/:id/github/selection-status", (req, res) =>
     res.json(github.discovery.status(actor(req), id(req), req.body)),
@@ -27,7 +38,7 @@ export function registerGithubRoutes(app: Express, github: GithubService) {
     res.json(github.disconnect(actor(req), id(req), req.body)),
   );
   app.post("/api/projects/:id/github/verify", async (req, res) =>
-    res.json(await github.verify(actor(req), id(req), req.body)),
+    res.json(await run(() => github.verify(actor(req), id(req), req.body))),
   );
   app.get("/api/issues/:id/github-evidence", (req, res) =>
     res.json(github.list(actor(req), id(req))),
@@ -42,6 +53,6 @@ export function registerGithubRoutes(app: Express, github: GithubService) {
     res.json(github.remove(actor(req), id(req), req.body)),
   );
   app.post("/api/github-evidence/:id/refresh", async (req, res) =>
-    res.json(await github.refresh(actor(req), id(req), req.body)),
+    res.json(await run(() => github.refresh(actor(req), id(req), req.body))),
   );
 }

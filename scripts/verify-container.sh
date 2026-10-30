@@ -119,6 +119,22 @@ mcp_pid=
 exec 3>&- 4>&-
 }
 verify_mcp
+# This bounded maintenance test keeps the same STDIO child through begin/resume;
+# it does not claim an old namespace survives container replacement.
+compose exec -T sticker node --input-type=module - < tests/container-access-snapshot.mjs > "$temporary/maintenance-before.json"
+maintenance_instance=$(compose exec -T -e STICKER_AGENT_TOKEN sticker node --input-type=module - exercise < tests/container-maintenance.mjs)
+[[ "$maintenance_instance" =~ ^[0-9a-f-]{36}$ ]] || { echo 'Invalid maintenance fixture instance.' >&2; exit 1; }
+compose stop -t 30 sticker
+bash scripts/backup.sh "$temporary/maintenance-fixture.tar.gz"
+[[ -z "$(compose ps --status running --quiet sticker)" ]] || { echo 'Planned maintenance backup reopened the service.' >&2; exit 1; }
+compose up -d --wait --wait-timeout 90 sticker
+compose exec -T sticker node --input-type=module - verify "$maintenance_instance" < tests/container-maintenance.mjs
+compose exec -T sticker node --input-type=module - < tests/container-access-snapshot.mjs > "$temporary/maintenance-after.json"
+docker run --rm --network none --entrypoint node \
+  --mount "type=bind,source=$temporary/maintenance-before.json,target=/before.json,readonly" \
+  --mount "type=bind,source=$temporary/maintenance-after.json,target=/after.json,readonly" \
+  "$STICKER_IMAGE" -e 'const fs=require("node:fs"),assert=require("node:assert/strict");assert.deepEqual(JSON.parse(fs.readFileSync("/before.json","utf8")),JSON.parse(fs.readFileSync("/after.json","utf8")));console.log("Planned maintenance backup stayed stopped and restart preserved data/uploads.")'
+compose exec -T sticker node --input-type=module - verify < tests/container-smoke.mjs
 # A separate synthetic writer can author documents only in the existing fixture project.
 # Keep the original read-only principal/token intact throughout this added lifecycle.
 readonly_token=$STICKER_AGENT_TOKEN

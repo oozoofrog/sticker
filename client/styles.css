@@ -4150,3 +4150,106 @@ main {
     min-width: 0;
   }
 }
+
+/* Issue source and preview share an inert renderer. Wide content scrolls locally. */
+.issue-markdown {
+  min-width: 0;
+  max-width: 100%;
+  white-space: normal;
+  overflow-wrap: anywhere;
+  line-height: 1.65;
+}
+.issue-markdown p {
+  white-space: pre-wrap;
+  margin: 0.6em 0;
+}
+.issue-markdown > :first-child {
+  margin-top: 0;
+}
+.issue-markdown h1,
+.issue-markdown h2,
+.issue-markdown h3,
+.issue-markdown h4,
+.issue-markdown h5,
+.issue-markdown h6 {
+  font-size: 1.15em;
+  margin: 0.9em 0 0.4em;
+  color: inherit;
+  letter-spacing: normal;
+}
+.issue-markdown ul,
+.issue-markdown ol {
+  padding-left: 1.6em;
+}
+.issue-markdown blockquote {
+  margin: 0.7em 0;
+  padding-left: 1em;
+  border-left: 3px solid #bdc7ae;
+}
+.issue-markdown pre,
+.markdown-table {
+  max-width: 100%;
+  overflow-x: auto;
+}
+.issue-markdown pre {
+  padding: 10px;
+  white-space: pre;
+  background: #f2f3ed;
+  border-radius: 6px;
+}
+.issue-markdown code {
+  font-family: monospace;
+}
+.issue-markdown table {
+  border-collapse: collapse;
+}
+.issue-markdown th,
+.issue-markdown td {
+  min-width: 6em;
+  vertical-align: top;
+  border: 1px solid #dce0d4;
+  padding: 6px 9px;
+}
+.issue-markdown input[type="checkbox"] {
+  width: auto;
+  margin-right: 5px;
+}
+.issue-markdown a {
+  text-decoration: underline;
+}
+.markdown-editor {
+  display: grid;
+  gap: 6px;
+  min-width: 0;
+}
+.markdown-editor > label {
+  font-size: 12px;
+  font-weight: 600;
+}
+.markdown-editor-modes {
+  display: flex;
+  gap: 4px;
+}
+.markdown-editor-modes button {
+  padding: 5px 9px;
+  border-radius: 5px;
+}
+.markdown-editor-modes button[aria-pressed="true"] {
+  background: #e8eddf;
+  font-weight: 650;
+}
+.markdown-editor textarea[hidden] {
+  display: none;
+}
+.markdown-preview {
+  min-height: 90px;
+  min-width: 0;
+  padding: 10px;
+  border: 1px solid #dce0d4;
+  border-radius: 6px;
+}
+
+.issue-markdown .markdown-source-fallback {
+  white-space: pre-wrap;
+  overflow-wrap: anywhere;
+}

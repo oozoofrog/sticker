@@ -1,3 +1,4 @@
+import type { MaintenanceController } from "../maintenance.js";
 import type { Express, Request, RequestHandler } from "express";
 import multer from "multer";
 import { z } from "zod";
@@ -47,6 +48,7 @@ export function registerResourceRoutes(
   app: Express,
   resources: ResourceService,
   files: FileStorage,
+  maintenance?: MaintenanceController,
 ) {
   app.get("/api/resources", (req, res) =>
     res.json(resources.list(actor(req), req.query)),
@@ -126,7 +128,7 @@ export function registerResourceRoutes(
       resources.authorizeProjectWrite(actor(req), id(req));
       next();
     },
-    receive,
+    maintenance ? maintenance.trackMiddleware(receive) : receive,
     (req, res) => {
       if (!req.file)
         throw new DomainError(400, "FILE_REQUIRED", "파일 하나를 선택하세요.");
@@ -162,7 +164,7 @@ export function registerResourceRoutes(
       resources.authorizeFileUpdate(actor(req), id(req));
       next();
     },
-    receive,
+    maintenance ? maintenance.trackMiddleware(receive) : receive,
     (req, res) => {
       if (!req.file)
         throw new DomainError(400, "FILE_REQUIRED", "파일 하나를 선택하세요.");

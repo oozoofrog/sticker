@@ -43,7 +43,9 @@ test("owner can build a project, track an issue, attach context and retain it af
     .first()
     .click();
   await page.getByLabel("이슈 제목").fill("첫 번째 스티커");
-  await page.getByLabel("설명").fill("실제 저장되는 작업입니다.");
+  await page
+    .getByRole("textbox", { name: "설명", exact: true })
+    .fill("실제 저장되는 작업입니다.");
   await page.getByRole("button", { name: "이슈 만들기", exact: true }).click();
   await expect(
     page.getByRole("heading", {
@@ -52,7 +54,9 @@ test("owner can build a project, track an issue, attach context and retain it af
       level: 2,
     }),
   ).toBeVisible();
-  await page.getByLabel("댓글 작성").fill("검증한 내용을 기록합니다.");
+  await page
+    .getByRole("textbox", { name: "댓글 작성", exact: true })
+    .fill("검증한 내용을 기록합니다.");
   await page.getByRole("button", { name: "댓글 남기기", exact: true }).click();
   await expect(
     page.getByText("검증한 내용을 기록합니다.", { exact: true }),
