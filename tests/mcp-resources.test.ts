@@ -27,6 +27,13 @@ function content<T>(result: unknown, schema: z.ZodType<T>): T {
     raw: unknown = JSON.parse(envelope.content[0].text);
   return schema.parse(raw);
 }
+function resourceError(result: unknown, code: string, status: number) {
+  assert.equal(z.object({ isError: z.boolean() }).parse(result).isError, true);
+  assert.deepEqual(
+    content(result, z.object({ code: z.string(), status: z.number() })),
+    { code, status },
+  );
+}
 void test("official MCP resources reauthorize scope, distinguish owner guidance, pin issue/result versions and never grant authority or owner writes", async () => {
   const f = await sessionHttpFixture(),
     server = createStickerMcp(f.base, f.tokens.agent),
@@ -351,6 +358,355 @@ void test("read-only MCP principals can search but cannot upload or attach resou
   } finally {
     await client.close();
     await server.close();
+    await f.close();
+  }
+});
+void test("MCP document authoring preserves source, versions and idempotent outcomes", async () => {
+  const f = await sessionHttpFixture();
+  const server = createStickerMcp(f.base, f.tokens.agent);
+  const client = new Client({ name: "document-author", version: "1" });
+  const [a, b] = InMemoryTransport.createLinkedPair();
+  try {
+    await server.connect(a);
+    await client.connect(b);
+    const tools = (await client.listTools()).tools;
+    for (const name of ["sticker_create_document", "sticker_update_document"]) {
+      const tool = tools.find((value) => value.name === name);
+      assert.ok(tool, `${name} must be discoverable`);
+      assert.equal(tool.annotations?.readOnlyHint, false);
+    }
+    const owningVersion = f.instance.store.createVersion(owner, {
+      projectId: f.project.id,
+      name: "v1",
+    });
+    const input = {
+      versionId: owningVersion.id,
+      projectId: f.project.id,
+      title: "Plan",
+      markdown: "# 계획\r\n\r\n- 원문  \r\n<script>untrusted</script>\n",
+      operationId: randomUUID(),
+    };
+    const call = async (name: string, args: Record<string, unknown>) =>
+      content(
+        await client.callTool({ name, arguments: args }),
+        resourceDetailSchema,
+      );
+    const created = await call("sticker_create_document", input);
+    assert.equal(created.current?.markdown, input.markdown);
+    assert.equal(created.current.authorId, "agent");
+    assert.deepEqual(await call("sticker_create_document", input), created);
+    resourceError(
+      await client.callTool({
+        name: "sticker_create_document",
+        arguments: { ...input, markdown: "changed create retry" },
+      }),
+      "OPERATION_CONFLICT",
+      409,
+    );
+    const update = {
+      resourceId: created.resource.id,
+      revision: created.resource.revision,
+      operationId: randomUUID(),
+      markdown: "새 계획\n",
+    };
+    const updated = await call("sticker_update_document", update);
+    assert.equal(updated.resource.versionId, owningVersion.id);
+    assert.equal(updated.resource.title, input.title);
+    assert.equal(updated.current?.version, 2);
+    assert.equal(updated.current.markdown, update.markdown);
+    assert.deepEqual(await call("sticker_update_document", update), updated);
+    resourceError(
+      await client.callTool({
+        name: "sticker_update_document",
+        arguments: { ...update, markdown: "changed retry" },
+      }),
+      "OPERATION_CONFLICT",
+      409,
+    );
+    resourceError(
+      await client.callTool({
+        name: "sticker_update_document",
+        arguments: { ...update, operationId: randomUUID() },
+      }),
+      "REVISION_CONFLICT",
+      409,
+    );
+    const selected = content(
+      await client.callTool({
+        name: "sticker_get_resource",
+        arguments: { resourceId: created.resource.id, resourceVersion: 1 },
+      }),
+      z.object({ selectedVersion: resourceVersionSchema }),
+    );
+    assert.equal(selected.selectedVersion.markdown, input.markdown);
+    const link = content(
+      await client.callTool({
+        name: "sticker_link_resource",
+        arguments: {
+          issueId: f.issue.id,
+          issueRevision: 1,
+          resourceId: created.resource.id,
+          resourceVersion: 2,
+          operationId: randomUUID(),
+        },
+      }),
+      issueResourceLinkSchema,
+    );
+    assert.equal(link.version.markdown, update.markdown);
+    const report = f.instance.store.sessions.report(
+      { ...owner, id: "agent", role: "agent", projectIds: [f.project.id] },
+      {
+        projectId: f.project.id,
+        issueId: f.issue.id,
+        externalSessionId: "document-work",
+        eventId: "result",
+        kind: "result",
+        message: "used v2",
+      },
+    );
+    const reference = content(
+      await client.callTool({
+        name: "sticker_record_resource_reference",
+        arguments: {
+          sessionId: report.session.id,
+          eventId: "result",
+          resourceId: created.resource.id,
+          resourceVersion: 2,
+          operationId: randomUUID(),
+        },
+      }),
+      resourceReferenceSchema,
+    );
+    assert.equal(reference.version.version, 2);
+    const unlinked = await call("sticker_update_document", {
+      ...update,
+      revision: 2,
+      operationId: randomUUID(),
+      versionId: null,
+      markdown: "third",
+    });
+    assert.equal(unlinked.resource.versionId, null);
+    const pinned = f.instance.store.resources.issueLinks(owner, f.issue.id);
+    assert.equal(pinned[0].version.version, 2);
+    assert.equal(pinned[0].version.markdown, update.markdown);
+    assert.equal(reference.version.markdown, update.markdown);
+    assert.equal(
+      f.instance.store.resources.sessionReferences(owner, report.session.id)[0]
+        .version.markdown,
+      update.markdown,
+    );
+    assert.equal(
+      f.instance.store.resources.list(owner, { projectId: f.project.id })
+        .length,
+      1,
+    );
+  } finally {
+    await client.close();
+    await server.close();
+    await f.close();
+  }
+});
+void test("MCP document writes enforce current authority and bounds without changing replay semantics", async () => {
+  const f = await sessionHttpFixture();
+  const server = createStickerMcp(f.base, f.tokens.agent);
+  const client = new Client({ name: "document-policy", version: "1" });
+  const readServer = createStickerMcp(f.base, f.tokens.read);
+  const readClient = new Client({ name: "document-readonly", version: "1" });
+  const [a, b] = InMemoryTransport.createLinkedPair(),
+    [c, d] = InMemoryTransport.createLinkedPair();
+  try {
+    await server.connect(a);
+    await client.connect(b);
+    await readServer.connect(c);
+    await readClient.connect(d);
+    const input = {
+      projectId: f.project.id,
+      title: "Bounds",
+      markdown: "한".repeat(100000),
+      operationId: randomUUID(),
+    };
+    const call = (name: string, args: Record<string, unknown>) =>
+      client.callTool({ name, arguments: args });
+    const denied = async (
+      name: string,
+      args: Record<string, unknown>,
+      code?: string,
+      status = 403,
+    ) => {
+      const result = await call(name, args);
+      assert.equal(result.isError, true);
+      if (code)
+        assert.deepEqual(
+          content(result, z.object({ code: z.string(), status: z.number() })),
+          { code, status },
+        );
+    };
+    await denied("sticker_create_document", {
+      ...input,
+      markdown: "a".repeat(100001),
+    });
+    await denied(
+      "sticker_create_document",
+      {
+        ...input,
+        projectId: f.other.id,
+      },
+      "PROJECT_SCOPE",
+    );
+    await denied("sticker_create_document", { ...input, isGuidance: true });
+    resourceError(
+      await readClient.callTool({
+        name: "sticker_create_document",
+        arguments: input,
+      }),
+      "READ_ONLY",
+      403,
+    );
+    const created = content(
+      await call("sticker_create_document", input),
+      resourceDetailSchema,
+    );
+    assert.equal(created.current?.markdown, input.markdown);
+    const update = {
+      resourceId: created.resource.id,
+      revision: 1,
+      operationId: randomUUID(),
+      markdown: "",
+    };
+    resourceError(
+      await readClient.callTool({
+        name: "sticker_update_document",
+        arguments: update,
+      }),
+      "READ_ONLY",
+      403,
+    );
+    await denied("sticker_update_document", {
+      ...update,
+      url: "https://example.invalid",
+    });
+    const foreignVersion = f.instance.store.createVersion(owner, {
+      projectId: f.other.id,
+      name: "Foreign",
+    });
+    await denied(
+      "sticker_update_document",
+      {
+        ...update,
+        versionId: foreignVersion.id,
+        operationId: randomUUID(),
+      },
+      "PROJECT_SCOPE",
+    );
+    assert.equal(
+      f.instance.store.resources.get(owner, created.resource.id).history.length,
+      1,
+    );
+    const updated = content(
+      await call("sticker_update_document", update),
+      resourceDetailSchema,
+    );
+    assert.equal(updated.current?.markdown, "");
+    assert.equal(updated.resource.title, input.title);
+    f.instance.store.resources.guidance(owner, created.resource.id, {
+      revision: 2,
+      isGuidance: true,
+      operationId: randomUUID(),
+    });
+    await denied("sticker_update_document", update, "OWNER_REQUIRED");
+    await denied(
+      "sticker_update_document",
+      {
+        ...update,
+        revision: 3,
+        operationId: randomUUID(),
+      },
+      "OWNER_REQUIRED",
+    );
+    // Creating again replays the original result; it does not edit the new guidance.
+    assert.deepEqual(
+      content(
+        await call("sticker_create_document", input),
+        resourceDetailSchema,
+      ),
+      created,
+    );
+    f.instance.store.resources.guidance(owner, created.resource.id, {
+      revision: 3,
+      isGuidance: false,
+      operationId: randomUUID(),
+    });
+    f.instance.store.resources.remove(owner, created.resource.id, {
+      revision: 4,
+      operationId: randomUUID(),
+    });
+    assert.deepEqual(
+      content(
+        await call("sticker_update_document", update),
+        resourceDetailSchema,
+      ),
+      updated,
+    );
+    await denied(
+      "sticker_update_document",
+      {
+        ...update,
+        revision: 5,
+        operationId: randomUUID(),
+      },
+      "RESOURCE_DELETED",
+      409,
+    );
+    const latest = content(
+      await call("sticker_get_resource", { resourceId: created.resource.id }),
+      z.object({
+        resource: resourceSchema,
+        selectedVersion: resourceVersionSchema.nullable(),
+      }),
+    );
+    assert.ok(latest.resource.deletedAt);
+    assert.equal(latest.selectedVersion, null);
+    const foreign = f.instance.store.resources.create(owner, {
+      ...input,
+      projectId: f.other.id,
+      kind: "markdown",
+      operationId: randomUUID(),
+    });
+    await denied(
+      "sticker_update_document",
+      {
+        ...update,
+        resourceId: foreign.resource.id,
+        operationId: randomUUID(),
+      },
+      "PROJECT_SCOPE",
+    );
+    const link = f.instance.store.resources.create(owner, {
+      projectId: f.project.id,
+      kind: "link",
+      title: "URL",
+      url: "https://example.invalid",
+      operationId: randomUUID(),
+    });
+    await denied(
+      "sticker_update_document",
+      {
+        ...update,
+        resourceId: link.resource.id,
+        operationId: randomUUID(),
+      },
+      "RESOURCE_KIND",
+      400,
+    );
+    assert.equal(
+      f.instance.store.resources.get(owner, link.resource.id).history.length,
+      1,
+    );
+  } finally {
+    await client.close();
+    await server.close();
+    await readClient.close();
+    await readServer.close();
     await f.close();
   }
 });
