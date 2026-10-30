@@ -1,0 +1,85 @@
+<!doctype html>
+<html lang="en">
+  <meta charset="utf-8" /><title>Sticker synthetic window fixture</title>
+  <style>
+    body {
+      font: 18px system-ui;
+      padding: 25px;
+    }
+    button,
+    input,
+    textarea {
+      font: inherit;
+      margin: 10px;
+    }
+    textarea {
+      display: block;
+      width: 85%;
+      height: 100px;
+    }
+    .space {
+      height: 900px;
+    }
+    output {
+      display: block;
+      white-space: pre-wrap;
+    }
+  </style>
+  <h1>STK-71 synthetic fixture — no production data</h1>
+  <output id="identity"></output
+  ><label>Unsaved text<textarea id="draft"></textarea></label>
+  <button id="route">Set route #draft</button
+  ><button id="confirm">Confirm dialog</button>
+  <button id="alert">Alert dialog</button
+  ><label>Fixture upload<input type="file" id="upload" /></label>
+  <button id="download">Blob download</button
+  ><a href="https://example.com/" target="_blank"
+    >Explicit external link (policy only)</a
+  >
+  <button id="redirect">Automatic external redirect (must block)</button>
+  <iframe title="Untrusted frame" src="/frame"></iframe
+  ><output id="result">No interaction yet</output>
+  <div class="space">
+    Scroll down and re-click Dock; input, route and scroll must survive.
+  </div>
+  <p>Bottom marker</p>
+  <script>
+    const marker = crypto.randomUUID();
+    document.getElementById("identity").textContent = "Document " + marker;
+    const result = document.getElementById("result");
+    document.getElementById("route").onclick = () => {
+      history.replaceState(null, "", "#draft");
+      result.textContent = "route " + location.hash;
+    };
+    document.getElementById("confirm").onclick = () => {
+      result.textContent =
+        "confirm " + confirm("Synthetic confirm: OK or Cancel");
+    };
+    document.getElementById("alert").onclick = () => {
+      alert("Synthetic alert");
+      result.textContent = "alert completed";
+    };
+    document.getElementById("upload").onchange = async (event) => {
+      const file = event.target.files[0];
+      result.textContent = file
+        ? "upload " + file.name + " " + (await file.text())
+        : "upload none";
+    };
+    document.getElementById("download").onclick = () => {
+      const link = document.createElement("a"),
+        url = URL.createObjectURL(
+          new Blob(["Sticker synthetic download 한글\n"], {
+            type: "text/plain",
+          }),
+        );
+      link.href = url;
+      link.download = "download.txt";
+      link.click();
+      setTimeout(() => URL.revokeObjectURL(url), 0);
+      result.textContent = "download requested";
+    };
+    document.getElementById("redirect").onclick = () => {
+      location.href = "/redirect";
+    };
+  </script>
+</html>

@@ -1,0 +1,159 @@
+// STK-71 native feasibility fixture ONLY, not the Sticker app.
+// No C function binding, native messaging bridge, browser scripting or credentials.
+ObjC.import('Foundation'); ObjC.import('AppKit'); ObjC.import('WebKit');
+var contentWindow = null, web = null, delegate = null, config = null;
+var bootstrapPending = true, panels = [], downloads = [], quitPending = false, stopped = false;
+function missing(value) { return value === null || value === undefined || typeof value.isNil !== 'function' || value.isNil(); }
+function str(value) { if (missing(value)) return ''; var text = ObjC.unwrap(value); return typeof text === 'string' ? text : ''; }
+function urlText(url) { return missing(url) ? '' : str(url.absoluteString); }
+function event(name, detail) {
+  console.log(name + (detail ? ': ' + detail : ''));
+  if (!config) return;
+  var file = $.NSFileHandle.fileHandleForWritingAtPath(config.trace);
+  if (missing(file)) throw new Error('fixture_trace_unavailable');
+  try { file.seekToEndOfFile; file.writeData($(JSON.stringify({ event: name, detail: detail || '', at: new Date().toISOString() }) + '\n').dataUsingEncoding($.NSUTF8StringEncoding)); }
+  finally { file.closeFile; }
+}
+function complete(callback, label, noValue) {
+  return WindowProbePolicy.once(function (value) {
+    try { if (noValue) callback(); else callback(value); event(label + '_completed'); }
+    catch (error) { stopped = true; event(label + '_bridge_failed', String(error).slice(0, 180)); if (web) web.stopLoading; if (contentWindow) { contentWindow.title = 'STOP — native callback failed'; contentWindow.orderOut(null); } throw error; }
+  });
+}
+function trusted(frame) { return !missing(frame) && !!frame.mainFrame && WindowProbePolicy.origin(urlText(frame.request.URL)) === config.origin; }
+function keepPanel(panel) { panels.push(panel); }
+function releasePanel(panel) { var index = panels.indexOf(panel); if (index >= 0) panels.splice(index, 1); }
+function confirmSheet(message, callback) {
+  var alert = $.NSAlert.alloc.init;
+  alert.messageText = 'Sticker fixture · ' + config.origin;
+  alert.informativeText = message;
+  var accept = alert.addButtonWithTitle('확인'), cancel = alert.addButtonWithTitle('취소');
+  accept.keyEquivalent = '\r'; cancel.keyEquivalent = '\u001b';
+  keepPanel(alert);
+  alert.beginSheetModalForWindowCompletionHandler(contentWindow, function (response) {
+    releasePanel(alert); callback(Number(response) === 1000);
+  });
+}
+function requestQuit() {
+  if (quitPending) return;
+  quitPending = true;
+  confirmSheet('시험 앱을 종료할까요? 입력은 저장되지 않습니다.', function (accepted) {
+    quitPending = false; event(accepted ? 'quit_confirmed' : 'quit_cancelled');
+    if (accepted) $.NSApplication.sharedApplication.terminate(null);
+  });
+}
+function show() {
+  if (stopped) { event('stopped_no_reopen'); return; }
+  if (!contentWindow) createWindow();
+  contentWindow.makeKeyAndOrderFront(null);
+  $.NSApplication.sharedApplication.activateIgnoringOtherApps(true);
+  event('focus');
+}
+ObjC.registerSubclass({
+  name: 'StickerWindowProbeDelegate', superclass: 'NSObject',
+  protocols: ['NSWindowDelegate', 'WKNavigationDelegate', 'WKUIDelegate', 'WKDownloadDelegate'],
+  methods: {
+    'windowShouldClose:': { types: ['bool', ['id']], implementation: function (window) { window.orderOut(null); event('hidden'); return false; } },
+    'quitFixture:': { types: ['void', ['id']], implementation: function () { requestQuit(); } },
+    'webView:decidePolicyForNavigationAction:decisionHandler:': {
+      types: ['void', ['id', 'id', 'block']], implementation: function (view, action, handler) {
+        var done = complete(handler, 'navigation');
+        var destination = urlText(action.request.URL), source = action.sourceFrame;
+        if (bootstrapPending && destination === config.url && !missing(action.targetFrame) && action.targetFrame.mainFrame) {
+          bootstrapPending = false; event('initial_navigation'); done(1); return;
+        }
+        var choice = WindowProbePolicy.navigation({ origin: config.origin, url: destination,
+          sourceOrigin: missing(source) ? null : WindowProbePolicy.origin(urlText(source.request.URL)),
+          mainFrame: !missing(source) && !!source.mainFrame, link: Number(action.navigationType) === 0,
+          download: !!action.shouldPerformDownload });
+        event('navigation_choice', choice);
+        // This fixture does not launch any external application; the eligibility is observed only.
+        if (choice === 'external') { done(0); return; }
+        if (choice === 'download') { done(2); return; }
+        if (choice === 'allow' && missing(action.targetFrame)) { done(0); event('same_origin_new_window_cancelled'); return; }
+        done(choice === 'allow' ? 1 : 0);
+      }
+    },
+    'webView:didFinishNavigation:': { types: ['void', ['id', 'id']], implementation: function () { event('loaded'); } },
+    'webView:didFailProvisionalNavigation:withError:': { types: ['void', ['id', 'id', 'id']], implementation: function () { event('load_failed'); } },
+    'webViewWebContentProcessDidTerminate:': { types: ['void', ['id']], implementation: function () { event('renderer_terminated'); contentWindow.title = 'STOP — renderer terminated'; } },
+    'webView:createWebViewWithConfiguration:forNavigationAction:windowFeatures:': {
+      types: ['id', ['id', 'id', 'id', 'id']], implementation: function () { event('popup_denied'); return null; }
+    },
+    'webView:runJavaScriptConfirmPanelWithMessage:initiatedByFrame:completionHandler:': {
+      types: ['void', ['id', 'id', 'id', 'block']], implementation: function (view, message, frame, handler) {
+        var done = complete(handler, 'confirm');
+        if (!trusted(frame)) { done(false); return; }
+        event('confirm_requested'); confirmSheet(str(message).slice(0, 400), function (accepted) { event('confirm_choice', String(accepted)); done(accepted); });
+      }
+    },
+    'webView:runJavaScriptAlertPanelWithMessage:initiatedByFrame:completionHandler:': {
+      types: ['void', ['id', 'id', 'id', 'block']], implementation: function (view, message, frame, handler) {
+        var done = complete(handler, 'alert', true);
+        if (!trusted(frame)) { done(); return; }
+        confirmSheet(str(message).slice(0, 400), function () { done(); });
+      }
+    },
+    'webView:runOpenPanelWithParameters:initiatedByFrame:completionHandler:': {
+      types: ['void', ['id', 'id', 'id', 'block']], implementation: function (view, parameters, frame, handler) {
+        var done = complete(handler, 'upload');
+        if (!trusted(frame)) { done(null); return; }
+        var panel = $.NSOpenPanel.openPanel;
+        panel.canChooseFiles = true; panel.canChooseDirectories = false;
+        panel.allowsMultipleSelection = false; panel.directoryURL = $.NSURL.fileURLWithPath(config.directory);
+        keepPanel(panel); event('upload_requested');
+        panel.beginSheetModalForWindowCompletionHandler(contentWindow, function (response) {
+          releasePanel(panel);
+          if (Number(response) !== 1) { event('upload_cancelled'); done(null); return; }
+          // Only the pre-created synthetic file is accepted by this test.
+          if (str(panel.URL.path) !== config.directory + '/upload.txt') { event('upload_outside_fixture_rejected'); done(null); return; }
+          event('upload_selected'); done(panel.URLs);
+        });
+      }
+    },
+    'webView:navigationAction:didBecomeDownload:': { types: ['void', ['id', 'id', 'id']], implementation: function (view, action, download) { downloads.push(download); download.delegate = delegate; event('download_created'); } },
+    'webView:navigationResponse:didBecomeDownload:': { types: ['void', ['id', 'id', 'id']], implementation: function (view, response, download) { downloads.push(download); download.delegate = delegate; event('download_created'); } },
+    'download:decideDestinationUsingResponse:suggestedFilename:completionHandler:': {
+      types: ['void', ['id', 'id', 'id', 'block']], implementation: function (download, response, name, handler) {
+        var done = complete(handler, 'download_destination'), panel = $.NSSavePanel.savePanel;
+        panel.directoryURL = $.NSURL.fileURLWithPath(config.directory);
+        panel.nameFieldStringValue = 'download.txt'; panel.canCreateDirectories = false;
+        keepPanel(panel); event('download_save_requested');
+        panel.beginSheetModalForWindowCompletionHandler(contentWindow, function (result) {
+          releasePanel(panel);
+          if (Number(result) !== 1) { event('download_cancelled'); done(null); return; }
+          var path = str(panel.URL.path);
+          if (path !== config.directory + '/download.txt' || $.NSFileManager.defaultManager.fileExistsAtPath(path)) { event('download_destination_rejected'); done(null); return; }
+          // WebKit's documented destination is a non-existing file. No custom writer or deletion.
+          event('download_destination_selected'); done(panel.URL);
+        });
+      }
+    },
+    'downloadDidFinish:': { types: ['void', ['id']], implementation: function () { event('download_finished'); } },
+    'download:didFailWithError:resumeData:': { types: ['void', ['id', 'id', 'id']], implementation: function () { event('download_failed'); } }
+  }
+});
+function createWindow() {
+  var resource = str($.NSBundle.mainBundle.resourcePath);
+  config = JSON.parse(str($.NSString.stringWithContentsOfFileEncodingError(resource + '/fixture.json', $.NSUTF8StringEncoding, null)));
+  if (!config || WindowProbePolicy.origin(config.url) !== config.origin || config.url !== config.origin + '/' || !/^\/(private\/)?tmp\/sticker-window-[A-Za-z0-9_-]+$/.test(config.directory) || config.trace !== config.directory + '/trace.jsonl') throw new Error('invalid_fixture');
+  delegate = $.StickerWindowProbeDelegate.alloc.init;
+  contentWindow = $.NSWindow.alloc.initWithContentRectStyleMaskBackingDefer($.NSMakeRect(0, 0, 900, 700), 15, $.NSBackingStoreBuffered, false);
+  contentWindow.title = 'Sticker Window Fixture — NOT production'; contentWindow.delegate = delegate;
+  var settings = $.WKWebViewConfiguration.alloc.init;
+  settings.websiteDataStore = $.WKWebsiteDataStore.nonPersistentDataStore;
+  web = $.WKWebView.alloc.initWithFrameConfiguration(contentWindow.contentView.bounds, settings);
+  web.autoresizingMask = 18; web.navigationDelegate = delegate; web.UIDelegate = delegate;
+  contentWindow.contentView.addSubview(web); contentWindow.center;
+  var mainMenu = $.NSMenu.alloc.init, appItem = $.NSMenuItem.alloc.init, appMenu = $.NSMenu.alloc.initWithTitle('Fixture');
+  var quitItem = $.NSMenuItem.alloc.initWithTitleActionKeyEquivalent('Quit Fixture', 'quitFixture:', 'q'); quitItem.target = delegate;
+  appMenu.addItem(quitItem); appItem.submenu = appMenu; mainMenu.addItem(appItem);
+  var editItem = $.NSMenuItem.alloc.init, edit = $.NSMenu.alloc.initWithTitle('Edit');
+  [['Undo','undo:','z'],['Redo','redo:','Z'],['Cut','cut:','x'],['Copy','copy:','c'],['Paste','paste:','v'],['Select All','selectAll:','a']].forEach(function (item) { edit.addItem($.NSMenuItem.alloc.initWithTitleActionKeyEquivalent(item[0], item[1], item[2])); });
+  editItem.submenu = edit; mainMenu.addItem(editItem); $.NSApplication.sharedApplication.mainMenu = mainMenu;
+  event('created'); web.loadRequest($.NSURLRequest.requestWithURL($.NSURL.URLWithString(config.url)));
+}
+function run() { show(); }
+function reopen() { show(); }
+function idle() { return 1; }
+function quit() { event('os_quit'); }
