@@ -72,6 +72,10 @@ test("issue source survives preview, save, comments and reload with inert narrow
   await expect(
     editor.getByRole("textbox", { name: "설명", exact: true }),
   ).toBeHidden();
+  await page.screenshot({
+    path: info.outputPath("issue-markdown-preview.png"),
+    fullPage: true,
+  });
   await editor.getByRole("button", { name: "설명 작성", exact: true }).click();
   await expect(
     editor.getByRole("textbox", { name: "설명", exact: true }),
@@ -125,6 +129,15 @@ test("issue source survives preview, save, comments and reload with inert narrow
       () => document.documentElement.scrollWidth <= innerWidth,
     ),
   ).toBe(true);
+  await page.screenshot({
+    path: info.outputPath("issue-markdown-saved.png"),
+    fullPage: true,
+  });
+  await panel.locator(".comment").first().scrollIntoViewIfNeeded();
+  await page.screenshot({
+    path: info.outputPath("issue-markdown-comment.png"),
+    fullPage: true,
+  });
   await panel.getByRole("button", { name: "이슈 편집", exact: true }).click();
   await expect(
     editor.getByRole("textbox", { name: "설명", exact: true }),
