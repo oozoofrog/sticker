@@ -122,3 +122,57 @@ Official API references: [Foundation NSProtocolFromString](<https://developer.ap
 [WKUIDelegate](https://developer.apple.com/documentation/webkit/wkuidelegate),
 [WKDownloadDelegate](https://developer.apple.com/documentation/webkit/wkdownloaddelegate),
 and [JXA Objective-C subclass registration](https://developer.apple.com/library/archive/releasenotes/InterapplicationCommunication/RN-JavaScriptForAutomation/Articles/OSX10-10.html).
+
+## Swift feasibility replacement — native verification pending
+
+The no-UI protocol diagnostic found `WKDownloadDelegate` absent from the JXA
+process's runtime lookup, with the other three present. This is not evidence that
+the OS lacks downloads. The separate `SwiftProbe.swift` uses compiler-checked
+AppKit/WebKit protocol conformances and typed callbacks, not a custom bridge.
+The earlier JXA files remain historical failure evidence, not a fallback path.
+
+Use a **fresh** server fixture as above, then compile only:
+
+```sh
+bash tests/native/dedicated-window/build-swift.sh "$fixture"
+```
+
+The build requires an already installed `xcrun` Swift compiler >=5.7 and macOS SDK >=11.3;
+it uses Swift 5 language mode and reports the compiler version. It installs nothing.
+Unsupported compiler syntax/API or signing failure is a stop. Parent schedules the
+Mac compile before any launch. The resulting `StickerSwiftWindowFixture.app` has a
+separate bundle identifier, no production paths, no entitlements, and no launch step.
+Only after compile/strict signing pass may the parent schedule the same native
+checklist against this app. Existing `node` is used only for the synthetic server.
+
+The Swift fixture keeps one nonpersistent WebKit store/window and uses typed,
+once-guarded sheet callbacks. Quit and hide are refused while a panel is pending,
+so cancel/accept can resolve the pending callback before retrying quit. This is a
+fixture guard, not the product's future full unsaved-data or busy-process lifecycle.
+Verify OS quit, menu quit, X, Escape and then callback completion while each confirm,
+upload and save panel is open. Automatic navigation, untrusted-frame and popup
+navigation are canceled; external link eligibility is logged without dispatch.
+Navigation responses and download redirects are separately checked (all download
+redirects canceled). No broad subresource-network-isolation claim is made.
+
+For download, cancel and pre-existing destination are rejected; no file is removed
+or overwritten by fixture code. **Selection-race preservation is not established
+by source inspection**: create the destination after selection but before WebKit
+writes in a separately scheduled native test, and inspect WebKit's failure and the
+existing bytes. Do not drop this gate or add a custom writer if it fails. Renderer
+termination stops interaction without automatically reloading unsaved state.
+Product integration remains unimplemented until all native fixture gates pass.
+
+Download-redirect gate: click **Test download redirect denial**. Require
+`download_created` then `download_redirect_denied` in native trace,
+`download_redirect_response` in server trace, and **no**
+`download_redirect_target_UNEXPECTED` or new file. If WKDownload's redirect
+callback is not actually reached, record this gate as **unverified**, not passed.
+The synthetic redirect target is on the same fixture server; no external request
+is needed to exercise the strict reject-all download-redirect policy.
+
+Swift-specific frame expectation: this fixture blocks subframe navigation/responses
+entirely. Verify the frame never displays its link and the trace records rejection;
+do **not** claim an iframe-internal link click test passed. The earlier JXA checklist's
+iframe click is superseded by this stronger display restriction for Swift only.
+This remains a navigation/display restriction, not a general network firewall.

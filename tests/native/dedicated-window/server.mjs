@@ -60,6 +60,21 @@ const server = createServer((req, res) => {
     res.end(html);
     return;
   }
+  if (req.url === "/download-redirect") {
+    log({ event: "download_redirect_response" });
+    res.writeHead(302, { Location: "/download-target" }).end();
+    return;
+  }
+  if (req.url === "/download-target") {
+    log({ event: "download_redirect_target_UNEXPECTED" });
+    res
+      .writeHead(200, {
+        "Content-Type": "text/plain",
+        "Content-Disposition": "attachment; filename=redirect.txt",
+      })
+      .end("redirect must not be downloaded");
+    return;
+  }
   if (req.url === "/redirect") {
     log({ event: "redirect" });
     res.writeHead(302, { Location: "https://example.com/" }).end();
