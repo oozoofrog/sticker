@@ -589,3 +589,260 @@ void test("first template selection confirms changed default attributes even wit
     await s.close();
   }
 });
+
+for (const field of [
+  "이슈 제목",
+  "설명",
+  "상태",
+  "우선순위",
+  "담당자",
+  "라벨",
+  "목표 버전",
+  "발견 버전",
+  "수정 버전",
+  "프로젝트",
+]) {
+  void test(`ordinary issue draft: changing ${field} requires discard consent before cancel`, async () => {
+    const s = await setup();
+    try {
+      let closed = 0;
+      render(
+        <IssueEditor
+          data={s.f.instance.store.bootstrap(sessionOwner)}
+          projectId={s.f.project.id}
+          onClose={() => {
+            closed++;
+          }}
+          onSaved={() => undefined}
+        />,
+      );
+      await screen.findByRole("option", { name: "버그 · v1" });
+      const input = screen.getByLabelText<
+        HTMLInputElement | HTMLSelectElement | HTMLTextAreaElement
+      >(field);
+      const initialValue = input.value;
+      if (input instanceof HTMLSelectElement) {
+        const value =
+          field === "프로젝트"
+            ? s.f.other.id
+            : field === "상태"
+              ? "ready"
+              : field === "우선순위"
+                ? "high"
+                : s.version.id;
+        await s.user.selectOptions(input, value);
+      } else await s.user.type(input, "합성 미저장 초안");
+      const value = input.value;
+      let prompts = 0;
+      window.confirm = () => {
+        prompts++;
+        return false;
+      };
+      await s.user.click(screen.getByRole("button", { name: "취소" }));
+      assert.equal(closed, 0, "declining discard keeps the editor open");
+      assert.equal(prompts, 1);
+      assert.equal(input.value, value);
+      const unload = new dom.window.Event("beforeunload", { cancelable: true });
+      window.dispatchEvent(unload);
+      assert.equal(unload.defaultPrevented, true);
+      if (input instanceof HTMLSelectElement)
+        await s.user.selectOptions(input, initialValue);
+      else await s.user.clear(input);
+      await s.user.click(screen.getByRole("button", { name: "취소" }));
+      assert.equal(
+        closed,
+        1,
+        "restoring the original field value needs no discard consent",
+      );
+      assert.equal(prompts, 1);
+      const cleanUnload = new dom.window.Event("beforeunload", {
+        cancelable: true,
+      });
+      window.dispatchEvent(cleanUnload);
+      assert.equal(cleanUnload.defaultPrevented, false);
+      if (input instanceof HTMLSelectElement)
+        await s.user.selectOptions(input, value);
+      else await s.user.type(input, value);
+      window.confirm = () => true;
+      await s.user.click(screen.getByRole("button", { name: "취소" }));
+      assert.equal(closed, 2, "explicit discard may close the editor");
+    } finally {
+      await s.close();
+    }
+  });
+}
+
+for (const departure of ["issue", "project"] as const) {
+  for (const field of ["이슈 제목", "설명", "우선순위"]) {
+    void test(`ordinary edited issue retains ${field} when ${departure} navigation is declined`, async () => {
+      const s = await setup();
+      try {
+        const { navigate } = await import("../../client/router.js");
+        window.history.replaceState(
+          {},
+          "",
+          `/#project=${s.f.project.id}&issue=${s.f.issue.id}`,
+        );
+        render(
+          <IssueEditor
+            issue={s.f.issue}
+            data={s.f.instance.store.bootstrap(sessionOwner)}
+            onClose={() => undefined}
+            onSaved={() => undefined}
+          />,
+        );
+        const input = screen.getByLabelText<
+          HTMLInputElement | HTMLSelectElement | HTMLTextAreaElement
+        >(field);
+        if (input instanceof HTMLSelectElement)
+          await s.user.selectOptions(input, "high");
+        else await s.user.type(input, " 합성 미저장 변경");
+        const value = input.value,
+          hash = window.location.hash;
+        let prompts = 0;
+        window.confirm = () => {
+          prompts++;
+          return false;
+        };
+        const next =
+          departure === "issue"
+            ? { issue: s.f.foreign.id }
+            : { project: s.f.other.id, issue: "" };
+        act(() => {
+          navigate(next);
+        });
+        assert.equal(
+          window.location.hash,
+          hash,
+          "declining navigation keeps the current issue route",
+        );
+        assert.equal(prompts, 1);
+        assert.equal(input.value, value);
+        window.confirm = () => true;
+        act(() => {
+          navigate(next);
+        });
+        assert.notEqual(window.location.hash, hash);
+      } finally {
+        await s.close();
+        window.history.replaceState({}, "", "/");
+      }
+    });
+  }
+}
+
+void test("untouched or reverted ordinary issue drafts close without discard prompts", async () => {
+  const s = await setup();
+  try {
+    let closed = 0,
+      prompts = 0;
+    window.confirm = () => {
+      prompts++;
+      return false;
+    };
+    const props = {
+      data: s.f.instance.store.bootstrap(sessionOwner),
+      projectId: s.f.project.id,
+      onClose: () => {
+        closed++;
+      },
+      onSaved: () => undefined,
+    };
+    const view = render(<IssueEditor {...props} />);
+    await screen.findByRole("option", { name: "버그 · v1" });
+    await s.user.click(screen.getByRole("button", { name: "취소" }));
+    assert.equal(closed, 1);
+    await s.user.type(screen.getByLabelText("이슈 제목"), "되돌릴 제목");
+    await s.user.clear(screen.getByLabelText("이슈 제목"));
+    await s.user.click(screen.getByRole("button", { name: "취소" }));
+    assert.equal(closed, 2);
+    view.unmount();
+    render(<IssueEditor {...props} issue={s.f.issue} />);
+    await s.user.click(screen.getByRole("button", { name: "취소" }));
+    assert.equal(closed, 3);
+    assert.equal(prompts, 0);
+    const unload = new dom.window.Event("beforeunload", { cancelable: true });
+    window.dispatchEvent(unload);
+    assert.equal(unload.defaultPrevented, false);
+  } finally {
+    await s.close();
+  }
+});
+
+void test("project prop refresh does not redefine the editor's initial project", async () => {
+  const s = await setup();
+  try {
+    let closed = 0,
+      prompts = 0;
+    window.confirm = () => {
+      prompts++;
+      return false;
+    };
+    const data = s.f.instance.store.bootstrap(sessionOwner);
+    const props = {
+      data,
+      onClose: () => {
+        closed++;
+      },
+      onSaved: () => undefined,
+    };
+    const view = render(<IssueEditor {...props} projectId={s.f.project.id} />);
+    await screen.findByRole("option", { name: "버그 · v1" });
+    view.rerender(<IssueEditor {...props} projectId={s.f.other.id} />);
+    assert.equal(
+      screen.getByLabelText<HTMLSelectElement>("프로젝트").value,
+      s.f.project.id,
+    );
+    await s.user.click(screen.getByRole("button", { name: "취소" }));
+    assert.equal(closed, 1);
+    assert.equal(prompts, 0);
+    await s.user.selectOptions(screen.getByLabelText("프로젝트"), s.f.other.id);
+    view.rerender(<IssueEditor {...props} projectId={s.f.other.id} />);
+    await s.user.click(screen.getByRole("button", { name: "취소" }));
+    assert.equal(
+      closed,
+      1,
+      "matching a new prop cannot hide a user project change",
+    );
+    assert.equal(prompts, 1);
+  } finally {
+    await s.close();
+  }
+});
+
+void test("selecting a template still requires discard consent before any title input", async () => {
+  const s = await setup();
+  try {
+    let closed = 0,
+      prompts = 0;
+    render(
+      <IssueEditor
+        data={s.f.instance.store.bootstrap(sessionOwner)}
+        projectId={s.f.project.id}
+        onClose={() => {
+          closed++;
+        }}
+        onSaved={() => undefined}
+      />,
+    );
+    await screen.findByRole("option", { name: "버그 · v1" });
+    await s.user.selectOptions(
+      screen.getByLabelText("이슈 템플릿"),
+      s.template.template.id,
+    );
+    await screen.findByRole("heading", { name: "버그 · v1" });
+    window.confirm = () => {
+      prompts++;
+      return false;
+    };
+    await s.user.click(screen.getByRole("button", { name: "취소" }));
+    assert.equal(closed, 0);
+    assert.equal(prompts, 1);
+    assert.equal(
+      screen.getByLabelText<HTMLSelectElement>("이슈 템플릿").value,
+      s.template.template.id,
+    );
+  } finally {
+    await s.close();
+  }
+});

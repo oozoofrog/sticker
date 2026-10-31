@@ -372,6 +372,7 @@ export function IssueEditor({
   const [project, setProject] = useState(
     issue?.projectId || projectId || data.projects[0]?.id || "",
   );
+  const [initialProject] = useState(project);
   const [title, setTitle] = useState(issue?.title || "");
   const [description, setDescription] = useState(issue?.description || "");
   const [status, setStatus] = useState<Issue["status"]>(
@@ -407,11 +408,6 @@ export function IssueEditor({
   const [templateBusy, setTemplateBusy] = useState(false);
   const [templateConflict, setTemplateConflict] = useState(false);
   const [operationId] = useState(() => crypto.randomUUID());
-  const dirty = !!template;
-  const guard = useDraftGuard(dirty, busy || templateBusy);
-  const close = () => {
-    guard.leave(onClose);
-  };
   const versions = data.versions.filter((v) => v.projectId === project);
   const hasTemplateOverwrite =
     !!template ||
@@ -423,6 +419,14 @@ export function IssueEditor({
     target !== (issue?.targetVersionId ?? "") ||
     found !== (issue?.foundVersionId ?? "") ||
     fixed !== (issue?.fixedVersionId ?? "");
+  const dirty =
+    hasTemplateOverwrite ||
+    title !== (issue?.title ?? "") ||
+    project !== initialProject;
+  const guard = useDraftGuard(dirty, busy || templateBusy);
+  const close = () => {
+    guard.leave(onClose);
+  };
   async function selectTemplate(id: string) {
     if (templateBusy || busy) return;
     if (
