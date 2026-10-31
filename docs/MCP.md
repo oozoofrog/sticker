@@ -10,7 +10,7 @@ SDK API와 STDIO 방식은 [공식 v1 서버 문서](https://ts.sdk.modelcontext
 
 빈 저장소에서는 **명시적으로 인증된 소유자 연결**이 `sticker_create_project`로 첫 프로젝트를 만들 수 있습니다. 기본 에이전트 연결은 소유자로 전환되지 않으며 `owner_required`를 반환합니다. 새 프로젝트 생성은 기존 에이전트의 `projectIds`를 늘리지 않습니다. 접근 범위 변경은 별도 운영자 권한이 필요합니다. 생성 요청에는 중복 방지 키가 없으므로 응답 유실이나 timeout은 `outcome: uncertain`, `retryable: false`, `readback: sticker_list_projects`로 알립니다. 다시 생성하기 전에 목록을 읽어 성공 여부를 확인하세요.
 
-현재 97개 도구를 제공합니다. 기존 42개 이름과 시작·인증 도구 4개를 유지하고 일반 업무 도구 42개와 청크 파일 도구 9개를 추가했습니다. 도움말은 실제 등록된 이름·HTTP 경로·필요 권한·확인·재시도·효과를 제공합니다. `conditional`은 대상 접근, revision, 지침 보호 등 HTTP 도메인의 추가 검사가 남았다는 뜻이며 호출 성공을 보장하지 않습니다. 서버는 클라이언트의 허용 목록을 볼 수 없습니다. 선택적인 `visibleTools`를 전달한 경우에만 전달받은 목록과 비교하며, 누락된 도구를 자동 활성화하지 않습니다.
+현재 109개 도구를 제공합니다. 기존 97개 이름과 청크 파일 도구 9개를 유지하고, 기존 GitHub 연결·근거 HTTP 동작에 대응하는 도구 12개를 추가했습니다. 도움말은 실제 등록된 이름·HTTP 경로·필요 권한·확인·재시도·효과를 제공합니다. `conditional`은 대상 접근, revision, 지침 보호 등 HTTP 도메인의 추가 검사가 남았다는 뜻이며 호출 성공을 보장하지 않습니다. 서버는 클라이언트의 허용 목록을 볼 수 없습니다. 선택적인 `visibleTools`를 전달한 경우에만 전달받은 목록과 비교하며, 누락된 도구를 자동 활성화하지 않습니다.
 
 ## 신뢰된 실행기·운영자용 인증 계약
 
@@ -148,9 +148,9 @@ Codex 설정은 사용자가 직접 `~/.codex/config.toml` 또는 선택한 프�
 - 점검: `sticker_get_maintenance`를 읽은 뒤 소유자만 `sticker_begin_maintenance`, `sticker_resume_maintenance`에 instanceId·현재 revision·리터럴 `confirm:true`를 보냅니다. Docker·서버 프로세스·호스트 파일을 조작하지 않습니다.
 - 로그아웃: `sticker_end_owner_session({confirm:true})`은 현재 owner-session 연결의 세션 한 개만 끝냅니다. 이후에는 401을 반환하고 다른 인증으로 대체하지 않습니다. 에이전트·로컬 소유자 모드에서는 요청 전 거부합니다. 토큰 폐기, 로컬 소유자 비활성화, 자격 파일 삭제는 하지 않습니다.
 
-이번 변경은 GitHub 연결이나 동기화 기능을 추가하거나 활성화하지 않습니다.
+기존 GitHub 연결·근거 동작은 같은 HTTP 권한으로 MCP에 노출합니다. 새 공급자 자격증명·GitHub 권한이나 자동 동기화를 활성화하지 않습니다.
 
-도구의 정확한 입력 스키마는 SDK list_tools, 권한·확인·재시도와 HTTP 대응은 `sticker_get_help`와 [카탈로그](../server/mcp/catalogue.ts)에서 확인할 수 있습니다. [경로 대응 계약](../server/mcp/route-coverage.ts)은 모든 실제 HTTP 경로를 도구·동등한 내용 조회·이유 있는 예외로 분류합니다. GitHub 관리 어댑터(Task3)와 자동 실행기 설치는 아직 남아 있어 전체 제품 동등성을 주장하지 않습니다. 비밀번호 로그인·발급은 모델 도구 밖의 비밀 입력 경계로 유지합니다.
+도구의 정확한 입력 스키마는 SDK list_tools, 권한·확인·재시도와 HTTP 대응은 `sticker_get_help`와 [카탈로그](../server/mcp/catalogue.ts)에서 확인할 수 있습니다. [경로 대응 계약](../server/mcp/route-coverage.ts)은 모든 실제 HTTP 경로를 도구·동등한 내용 조회·이유 있는 예외로 분류합니다. 현재 공개 HTTP 동작의 대응은 검사하지만, 별도 개발 중인 GitHub App·제품 계정 연결과 자동 실행기 설치까지 완료했다고 주장하지 않습니다. 비밀번호 로그인·발급은 모델 도구 밖의 비밀 입력 경계로 유지합니다.
 
 operationId가 있는 추가 쓰기(자료·템플릿 생성·요청 응답/종결·이월 적용·출시·선택 복원)는 **같은 키와 동일한 전체 원래 입력·revision**으로만 재시도합니다. 템플릿 수정·삭제, 개인 뷰, 초안 저장·생성, 기존 삭제, 점검 제어와 로그아웃은 일반 재생 키가 없습니다. 응답을 놓쳤다면 먼저 해당 대상의 현재 상태를 읽습니다. 키를 새로 만들거나 내용을 바꾼 재전송은 복구가 아닙니다.
 
@@ -184,7 +184,13 @@ operationId가 있는 추가 쓰기(자료·템플릿 생성·요청 응답/종�
 
 `sticker_list_issue_templates`, `sticker_get_issue_template`, `sticker_preview_issue_template`은 현재 범위의 정의를 읽습니다. `sticker_create_issue`의 `templateId`, 현재 `templateVersion`, `templateValues`, UUID `operationId`로 같은 필수 값 검증을 거쳐 생성합니다. 소유자는 `sticker_create_issue_template`, `sticker_update_issue_template`, `sticker_delete_issue_template`으로 관리합니다. 생성만 operationId 중복 방지를 지원합니다. 수정은 현재 revision과 전체 정의를 보내며 삭제도 현재 revision이 필요합니다. `sticker_list_template_assignees`로 담당자 후보를 읽습니다. 템플릿 본문은 실행·승인이 아닙니다. [정확한 생성 및 재시도 계약](ISSUE-TEMPLATES.md).
 
-### GitHub 근거 (읽기 전용)
+### 기존 GitHub 연결·근거
+
+소유자는 `sticker_list_github_sources` → `sticker_list_github_repositories`로 기존 설정에 연결된 출처와 저장소를 읽고, 반환된 sourceId·selectionId·revision과 `confirm:true`로 `sticker_connect_github_selection`을 호출합니다. 출처·저장소 목록은 임시 선택 표를 발급하므로 읽기 전용으로 표시하지 않습니다. 커서와 표는 소유자·프로젝트·연결 revision에 묶여 만료되며 토큰·내부 자격 참조는 출력되지 않습니다. 응답을 잃으면 **원래 선택 입력**으로 `sticker_get_github_selection_status`를 조회합니다. 만료된 표는 연결 성공이나 실패를 증명하지 않으며 자동으로 다시 연결하지 않습니다.
+
+`sticker_get_github_connection`은 현재 연결을 읽습니다. `sticker_verify_github_connection`과 `sticker_disconnect_github_connection`은 현재 revision·`confirm:true`가 필요합니다. 확인은 원격 조회 후 확인 시각 또는 오류와 새 revision을 저장하는 쓰기이며 GitHub 이슈 쓰기 권한을 보장하지 않습니다. `sticker_set_github_connection`은 기존 사용자 지정 설정의 호환 경로입니다. credentialRef는 이미 설정된 참조만 받으며 일반 연결에서 토큰·JSON·경로를 입력하도록 요구하지 않습니다.
+
+근거 추가는 `sticker_add_github_evidence`에 issueId·URL·issueRevision, 개별 조회는 `sticker_get_github_evidence_item`에 evidenceId를 보냅니다. `sticker_refresh_github_evidence`와 `sticker_remove_github_evidence`는 evidenceId·현재 revision을 받습니다. 쓰기는 현재 이슈의 프로젝트 범위·쓰기 권한·종결 보호를 그대로 적용합니다. 갱신은 스냅샷 또는 오류를 저장하며, 공급자 오류는 성공한 조회로 바뀌지 않습니다. 원격 PR·커밋·이슈 상태는 변경하지 않습니다. 이 동작에는 operationId 재생 계약이 없으므로 불확실한 응답 뒤에는 현재 연결·원래 선택 상태·근거 목록을 조회하고 자동 재전송하지 마세요. 동일 이슈·URL 추가가 기존 근거를 반환하는 규칙도 현재 권한과 issueRevision 검사를 건너뛰지 않습니다.
 
 `sticker_get_github_evidence({issueId})`는 이슈와 같은 프로젝트 권한으로 저장된 PR/커밋·CI 근거를 읽습니다. 조회 자체는 GitHub 네트워크 요청을 하지 않으며 쓰기·병합·CI 실행 권한이 없습니다. [연결 및 상태 규칙](GITHUB-EVIDENCE.md).
 

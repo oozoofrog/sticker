@@ -9,7 +9,10 @@ export function registerCapabilityTools(
   { tool, json }: McpFeatureClient,
   transport: ReturnType<typeof createStickerTransport>,
 ) {
-  const visibleTools = z.array(z.string().min(1).max(128)).max(100).optional();
+  const visibleTools = z
+    .array(z.string().min(1).max(128))
+    .max(Math.max(100, MCP_CATALOGUE.length))
+    .optional();
   async function help(visible?: string[], selectedTool?: string) {
     const actor = await transport.verifiedActor();
     const actions = MCP_CATALOGUE.filter(

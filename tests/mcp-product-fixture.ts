@@ -7,6 +7,7 @@ import { createHash } from "node:crypto";
 import { Client } from "@modelcontextprotocol/sdk/client/index.js";
 import { InMemoryTransport } from "@modelcontextprotocol/sdk/inMemory.js";
 import { z } from "zod";
+import type { GithubProvider } from "../server/features/github.js";
 import { Store } from "../server/domain.js";
 import { createApp } from "../server/app.js";
 import { createStickerMcp } from "../server/mcp.js";
@@ -14,6 +15,7 @@ import { sessionOwner as owner } from "./session-fixture.js";
 export async function ordinaryMcpFixture(
   ownerMode: "owner-session" | "trusted-local-owner" = "owner-session",
   artifactRoot?: string,
+  githubProvider?: GithubProvider,
 ) {
   if (artifactRoot) mkdirSync(artifactRoot, { recursive: true });
   const dir = mkdtempSync(
@@ -48,6 +50,7 @@ export async function ordinaryMcpFixture(
   seed.close();
   const instance = createApp({
     dataDir: dir,
+    githubProvider,
     clientDir,
     appOrigin: apiUrl,
     ownerPassword: "synthetic-ordinary-owner-password",
@@ -157,6 +160,7 @@ export async function ordinaryMcpFixture(
     tokens,
     ok,
     denied,
+    invoke,
     async close() {
       for (const p of clients) {
         await p.client.close();

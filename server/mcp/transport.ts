@@ -363,10 +363,11 @@ export function createStickerTransport(options: StickerMcpOptions) {
     try {
       if (domainRequest) options?.onDispatch?.();
       const action = actions.getStore();
+      // GET may issue capability tickets; HEAD/OPTIONS remain preflight only.
       if (
         domainRequest &&
         action?.entry.effect === "write" &&
-        !["GET", "HEAD", "OPTIONS"].includes(method)
+        !["HEAD", "OPTIONS"].includes(method)
       )
         action.mutationDispatched = true;
       requesting = true;
