@@ -31,24 +31,6 @@ export const MCP_ROUTE_EXCEPTIONS = [
     reason:
       "SPA presentation transport; product actions are covered individually.",
   },
-  ...[
-    "GET /api/projects/:id/github/sources",
-    "POST /api/projects/:id/github/repositories",
-    "POST /api/projects/:id/github/select",
-    "POST /api/projects/:id/github/selection-status",
-    "GET /api/projects/:id/github",
-    "PUT /api/projects/:id/github",
-    "DELETE /api/projects/:id/github",
-    "POST /api/projects/:id/github/verify",
-    "POST /api/issues/:id/github-evidence",
-    "GET /api/github-evidence/:id",
-    "DELETE /api/github-evidence/:id",
-    "POST /api/github-evidence/:id/refresh",
-  ].map((route) => ({
-    route,
-    reason:
-      "Pending Task3 typed GitHub/provider adapter; no claim of parity yet.",
-  })),
 ] as const;
 /** Chunked file tools cover the full HTTP file budget; legacy one-message tools retain their limits. */
 export const MCP_PARTIAL_FILE_ROUTES: readonly string[] = [];
