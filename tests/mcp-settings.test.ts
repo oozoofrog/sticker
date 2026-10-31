@@ -143,7 +143,16 @@ void test(
         tools.tools.some((tool) => tool.name === "sticker_list_projects"),
       );
       assert.ok(
-        !tools.tools.some((tool) => tool.name === "sticker_get_mcp_settings"),
+        tools.tools.some((tool) => tool.name === "sticker_get_mcp_settings"),
+      );
+      assert.equal(
+        (
+          await client.callTool({
+            name: "sticker_get_mcp_settings",
+            arguments: {},
+          })
+        ).isError,
+        true,
       );
       const listed = await client.callTool({
         name: "sticker_list_projects",

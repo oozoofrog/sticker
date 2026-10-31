@@ -1,3 +1,4 @@
+import { relationSummariesSchema } from "../contracts/relations.js";
 import { z } from "zod";
 import type { McpFeatureClient } from "./sessions.js";
 import {
@@ -6,7 +7,11 @@ import {
   relationInputSchema,
   relationRevisionSchema,
 } from "../contracts/relations.js";
-export function registerRelationTools({ tool, json }: McpFeatureClient) {
+export function registerRelationTools({
+  tool,
+  json,
+  deleteNoContent,
+}: McpFeatureClient) {
   const id = z.string().min(1).max(128),
     e = encodeURIComponent;
   tool(
@@ -33,8 +38,20 @@ export function registerRelationTools({ tool, json }: McpFeatureClient) {
     "관계만 해제합니다. 양끝 이슈의 현재 revision이 필요하며 이슈는 삭제하지 않습니다.",
     { relationId: id, ...relationRevisionSchema.shape },
     async ({ relationId, ...input }) => {
-      await json(`/api/relations/${e(relationId)}`, "DELETE", input);
+      await deleteNoContent(`/api/relations/${e(relationId)}`, input);
       return { removed: true };
     },
+  );
+  tool(
+    "sticker_get_relation_summaries",
+    "범위 내 이슈 관계와 차단 요약을 읽습니다.",
+    { projectId: id.optional() },
+    async ({ projectId }) =>
+      relationSummariesSchema.parse(
+        await json(
+          `/api/relations/summary${projectId ? `?projectId=${e(projectId)}` : ""}`,
+        ),
+      ),
+    true,
   );
 }

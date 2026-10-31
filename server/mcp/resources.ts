@@ -1,3 +1,8 @@
+import {
+  resourceMutationInputSchema,
+  resourceGuidanceInputSchema,
+  resourceUnlinkInputSchema,
+} from "../contracts/resources.js";
 import { z } from "zod";
 import type { McpFeatureClient } from "./sessions.js";
 import {
@@ -206,6 +211,96 @@ export function registerResourceTools({
         base64: Buffer.concat(chunks).toString("base64"),
       };
     },
+    true,
+  );
+  const link = resourceCreateInputSchema.options[1].omit({ kind: true });
+  tool(
+    "sticker_create_resource_link",
+    "권한 내 프로젝트에 HTTP(S) 링크 자료를 만듭니다. 외부 URL을 가져오지 않습니다. 같은 키·동일 입력으로만 재시도하세요.",
+    link.shape,
+    async (input) =>
+      resourceDetailSchema.parse(
+        await json(
+          "/api/resources",
+          "POST",
+          resourceCreateInputSchema.parse({
+            ...link.parse(input),
+            kind: "link",
+          }),
+        ),
+      ),
+  );
+  tool(
+    "sticker_update_resource",
+    "현재 revision으로 제목·버전·Markdown 또는 링크를 수정합니다. 종류는 바꿀 수 없고 지정 지침은 소유자만 수정합니다.",
+    { resourceId: id, ...resourcePatchInputSchema.shape },
+    async ({ resourceId, ...input }) => {
+      const body = resourcePatchInputSchema.parse(input);
+      return resourceDetailSchema.parse(
+        await json(`/api/resources/${e(resourceId)}`, "PATCH", body),
+      );
+    },
+  );
+  tool(
+    "sticker_delete_resource",
+    "자료를 삭제 표시하고 불변 이력을 보존합니다. 현재 revision과 동일 operationId·입력을 유지하세요.",
+    { resourceId: id, ...resourceMutationInputSchema.shape },
+    async ({ resourceId, ...input }) => {
+      const body = resourceMutationInputSchema.parse(input);
+      return resourceDetailSchema.parse(
+        await json(`/api/resources/${e(resourceId)}`, "DELETE", body),
+      );
+    },
+  );
+  tool(
+    "sticker_set_resource_guidance",
+    "소유자가 프로젝트 지침 여부를 지정합니다. 문서 내용은 추가 권한이 아닙니다.",
+    { resourceId: id, ...resourceGuidanceInputSchema.shape },
+    async ({ resourceId, ...input }) => {
+      const body = resourceGuidanceInputSchema.parse(input);
+      return resourceDetailSchema.parse(
+        await json(`/api/resources/${e(resourceId)}/guidance`, "PATCH", body),
+      );
+    },
+  );
+  tool(
+    "sticker_list_issue_resources",
+    "이슈에 연결된 자료의 정확한 버전과 연결 ID를 읽습니다.",
+    { issueId: z.string().min(1).max(128) },
+    async ({ issueId }) =>
+      issueResourceLinkSchema
+        .array()
+        .parse(await json(`/api/issues/${e(issueId)}/resources`)),
+    true,
+  );
+  tool(
+    "sticker_unlink_resource",
+    "자료 연결 ID로 참조를 해제합니다. 원본 자료는 보존합니다. 현재 이슈 revision이 필요합니다.",
+    {
+      issueId: z.string().min(1).max(128),
+      linkId: id,
+      ...resourceUnlinkInputSchema.shape,
+    },
+    async ({ issueId, linkId, ...input }) =>
+      z
+        .object({ removed: z.literal(true) })
+        .strict()
+        .parse(
+          await json(
+            `/api/issues/${e(issueId)}/resources/${e(linkId)}`,
+            "DELETE",
+            resourceUnlinkInputSchema.parse(input),
+          ),
+        ),
+  );
+  tool(
+    "sticker_list_session_resource_references",
+    "범위 내 세션의 기록된 결과 자료 참조를 읽습니다. 실행 증거는 아닙니다.",
+    { sessionId: z.string().min(1).max(128) },
+    async ({ sessionId }) =>
+      resourceReferenceSchema
+        .array()
+        .parse(await json(`/api/sessions/${e(sessionId)}/resources`)),
     true,
   );
 }

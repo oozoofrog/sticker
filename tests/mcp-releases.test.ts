@@ -23,7 +23,7 @@ function content<T>(result: unknown, schema: z.ZodType<T>) {
   const raw: unknown = JSON.parse(envelope.content[0].text);
   return schema.parse(raw);
 }
-void test("MCP reads exact HTTP readiness and saved draft under project scope, with no release tool or generic transition bypass", async () => {
+void test("MCP reads exact HTTP readiness and saved draft under project scope, with an owner-only release tool and no generic transition bypass", async () => {
   const f = await sessionHttpFixture(),
     server = createStickerMcp(f.base, f.tokens.agent),
     client = new Client({ name: "release-test", version: "1" }),
@@ -45,7 +45,21 @@ void test("MCP reads exact HTTP readiness and saved draft under project scope, w
     });
     const tools = (await client.listTools()).tools.map((x) => x.name);
     assert.ok(tools.includes("sticker_get_version_readiness"));
-    assert.ok(!tools.some((x) => /release_version|confirm_release/.test(x)));
+    assert.ok(tools.includes("sticker_release_version"));
+    assert.equal(
+      (
+        await client.callTool({
+          name: "sticker_release_version",
+          arguments: {
+            versionId: v.id,
+            revision: 1,
+            operationId: "00000000-0000-4000-8000-000000000001",
+            confirm: true,
+          },
+        })
+      ).isError,
+      true,
+    );
     const read = content(
       await client.callTool({
         name: "sticker_get_version_readiness",
