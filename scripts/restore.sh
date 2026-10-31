@@ -32,6 +32,8 @@ docker compose run --rm --no-deps -T --entrypoint sh sticker -c '
   trap "rm -rf -- \"$stage\"" EXIT
   tar --no-same-owner --no-same-permissions -xzf - -C "$stage"
   node dist/server/backup-validation.js "$stage"
+  # Separate restore-only transaction: never revive restored managed authority.
+  node dist/server/client-grants-restore.js "$stage"
   find /app/data -mindepth 1 -maxdepth 1 ! -path "$stage" -exec rm -rf -- {} +
   find "$stage" -mindepth 1 -maxdepth 1 -exec mv -- {} /app/data/ \;
 ' < "$archive"

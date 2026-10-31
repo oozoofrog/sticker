@@ -48,7 +48,7 @@ void test("v7 migrates preserving issue data; v8 GitHub configuration and cached
   });
   assert.equal(connection.providerEnabled, false);
   store.close();
-  assert.equal(validateBackup(dir).schemaVersion, 10);
+  assert.equal(validateBackup(dir).schemaVersion, 11);
   cpSync(dir, restore, { recursive: true });
   for (const location of [dir, restore]) {
     const reopened = new Store(location);

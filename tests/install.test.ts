@@ -41,7 +41,7 @@ else if(args[1]==='run'){
   const ep=args.indexOf('--entrypoint');
   if(args[ep+1]==='tar')process.stdout.write(fs.readFileSync(process.env.FIXTURE_ARCHIVE));
   else if(args[ep+1]==='sh'){
-    const command=args[args.indexOf('-c')+1].replaceAll('/app/data',process.env.FIXTURE_DATA).replace('node dist/server/backup-validation.js',process.env.FIXTURE_VALIDATOR);
+    const command=args[args.indexOf('-c')+1].replaceAll('/app/data',process.env.FIXTURE_DATA).replace('node dist/server/backup-validation.js',process.env.FIXTURE_VALIDATOR).replace('node dist/server/client-grants-restore.js',process.env.FIXTURE_GRANT_INVALIDATOR);
     const result=cp.spawnSync('sh',['-c',command],{input:fs.readFileSync(0),stdio:['pipe','inherit','inherit']});
     process.exitCode=result.status??1;
   }
@@ -56,6 +56,7 @@ else if(args[1]==='run'){
     FIXTURE_DATA: join(dir, "data"),
     FIXTURE_ARCHIVE: join(dir, "input.tar.gz"),
     FIXTURE_RUNNING: "yes",
+    FIXTURE_GRANT_INVALIDATOR: `node --import ${join(process.cwd(), "node_modules/tsx/dist/loader.mjs")} ${join(process.cwd(), "server/client-grants-restore.ts")}`,
     FIXTURE_VALIDATOR: `node --import ${join(process.cwd(), "node_modules/tsx/dist/loader.mjs")} ${join(process.cwd(), "server/backup-validation.ts")}`,
   };
   return {
@@ -312,3 +313,25 @@ for (const invalid of ["zero-byte", "unrelated", "missing-attachment"] as const)
       f.close();
     }
   });
+
+void test("restore-only managed invalidation failure never replaces old data and never starts service", () => {
+  const f = setup();
+  try {
+    createDb(join(f.dir, "data", "sticker.sqlite"), "original");
+    createDb(join(f.dir, "source", "sticker.sqlite"), "staged");
+    archive(f.dir);
+    f.env.FIXTURE_GRANT_INVALIDATOR = "false";
+    const result = f.run("restore.sh", [
+      join(f.dir, "input.tar.gz"),
+      "--replace-data",
+    ]);
+    assert.notEqual(result.status, 0);
+    assert.equal(marker(join(f.dir, "data", "sticker.sqlite")), "original");
+    assert.deepEqual(
+      f.calls().map((c) => c[1]),
+      ["stop", "run"],
+    );
+  } finally {
+    f.close();
+  }
+});

@@ -75,7 +75,7 @@ void test("shared keyed attachment multipart persists one outcome/activity and r
     } finally {
       db.close();
     }
-    assert.equal(validateBackup(f.dir).schemaVersion, 10);
+    assert.equal(validateBackup(f.dir).schemaVersion, 11);
     writeFileSync(
       join(f.dir, "uploads", attachment.storageKey ?? ""),
       Buffer.from("broken! file"),
@@ -135,7 +135,7 @@ void test("deleted keyed attachments stay deleted after replay; historical journ
       0,
     );
     assert.deepEqual(readdirSync(join(f.dir, "uploads")), []);
-    assert.equal(validateBackup(f.dir).schemaVersion, 10);
+    assert.equal(validateBackup(f.dir).schemaVersion, 11);
     assert.equal(
       (await f.call(`/issues/${f.issue.id}`, "owner", "DELETE")).status,
       204,

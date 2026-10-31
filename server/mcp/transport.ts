@@ -1,3 +1,4 @@
+import { managedAccessSchema } from "../contracts/client-grants.js";
 import { trackedMultipart } from "./multipart-body.js";
 import { AsyncLocalStorage } from "node:async_hooks";
 import type { McpCatalogueEntry } from "./catalogue.js";
@@ -471,7 +472,7 @@ export function createStickerTransport(options: StickerMcpOptions) {
       );
     }
   }
-  async function verifiedActorWith(
+  async function verifiedAccessWith(
     credentials: CredentialHeaders,
     options?: TransferRequestOptions,
   ) {
@@ -519,7 +520,9 @@ export function createStickerTransport(options: StickerMcpOptions) {
           projectIds: z.array(z.string().min(1).max(100)).max(1000).nullable(),
         })
       : actorSchema;
-    const parsedActor = z.object({ actor: actorContract }).safeParse(raw);
+    const parsedActor = z
+      .object({ actor: actorContract, access: managedAccessSchema.optional() })
+      .safeParse(raw);
     if (!parsedActor.success)
       throw new ApiError(
         502,
@@ -541,7 +544,16 @@ export function createStickerTransport(options: StickerMcpOptions) {
         "auth_actor_mismatch",
         "서버가 요청한 인증 주체를 확인하지 못했습니다.",
       );
-    return actor;
+    return { actor, access: parsedActor.data.access };
+  }
+  async function verifiedActorWith(
+    credentials: CredentialHeaders,
+    options?: TransferRequestOptions,
+  ) {
+    return (await verifiedAccessWith(credentials, options)).actor;
+  }
+  async function verifiedAccess() {
+    return verifiedAccessWith(await headers());
   }
   async function verifiedActor(options?: TransferRequestOptions) {
     options?.signal?.throwIfAborted();
@@ -700,6 +712,7 @@ export function createStickerTransport(options: StickerMcpOptions) {
     deleteNoContent,
     probeStatus,
     verifiedActor,
+    verifiedAccess,
     formatFailure,
     withAction,
     mode: auth.mode,

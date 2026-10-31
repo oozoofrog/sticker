@@ -11,23 +11,26 @@ export function registerCapabilityTools(
 ) {
   const visibleTools = z.array(z.string().min(1).max(128)).max(100).optional();
   async function help(visible?: string[], selectedTool?: string) {
-    const actor = await transport.verifiedActor();
+    const { actor, access } = await transport.verifiedAccess();
     const actions = MCP_CATALOGUE.filter(
       (entry) => !selectedTool || entry.tool === selectedTool,
     ).map((entry) => {
       const reason =
-        entry.authenticationMode && entry.authenticationMode !== transport.mode
-          ? "authentication_mode_required"
-          : entry.authority === "owner" && actor.role !== "owner"
-            ? "owner_required"
-            : entry.authority === "agent-writer" && actor.role !== "agent"
-              ? "agent_required"
-              : (entry.authority === "writer" ||
-                    entry.authority === "agent-writer" ||
-                    entry.effect === "write") &&
-                  !actor.canWrite
-                ? "write_permission_required"
-                : undefined;
+        access?.state === "provisional" && entry.tool !== "sticker_get_help"
+          ? "activation_required"
+          : entry.authenticationMode &&
+              entry.authenticationMode !== transport.mode
+            ? "authentication_mode_required"
+            : entry.authority === "owner" && actor.role !== "owner"
+              ? "owner_required"
+              : entry.authority === "agent-writer" && actor.role !== "agent"
+                ? "agent_required"
+                : (entry.authority === "writer" ||
+                      entry.authority === "agent-writer" ||
+                      entry.effect === "write") &&
+                    !actor.canWrite
+                  ? "write_permission_required"
+                  : undefined;
       return {
         ...entry,
         availability: reason
