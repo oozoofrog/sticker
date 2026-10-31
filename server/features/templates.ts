@@ -35,13 +35,13 @@ function parse<T>(schema: z.ZodType<T>, input: unknown): T {
 export class TemplateService {
   constructor(
     private readonly context: StoreContext,
-    private readonly actors: readonly Actor[],
+    private readonly actors: readonly Actor[] | (() => readonly Actor[]),
   ) {}
   examples() {
     return structuredClone(TEMPLATE_EXAMPLES);
   }
   private eligible(projectId: string) {
-    return this.actors
+    return (typeof this.actors === "function" ? this.actors() : this.actors)
       .filter(
         (actor) =>
           actor.role === "owner" ||

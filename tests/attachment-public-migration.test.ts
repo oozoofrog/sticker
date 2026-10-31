@@ -26,14 +26,14 @@ function rows(db: DatabaseSync) {
   );
 }
 
-void test("public 9 to 10 preserves all prior tables and file bytes without unpublished GitHub tables", (t) => {
+void test("public 9 through 11 preserves all prior tables and file bytes without unpublished GitHub tables", (t) => {
   assert.deepEqual(
     migrations.map((m) => m.version),
-    [1, 2, 3, 4, 5, 6, 7, 8, 9, 10],
+    [1, 2, 3, 4, 5, 6, 7, 8, 9, 10, 11],
   );
   assert.deepEqual(
     Object.keys(schemaManifests).map(Number),
-    [1, 2, 3, 4, 5, 6, 7, 8, 9, 10],
+    [1, 2, 3, 4, 5, 6, 7, 8, 9, 10, 11],
   );
   assert.deepEqual(
     Object.keys(schemaManifests[10]).filter(
@@ -91,7 +91,7 @@ void test("public 9 to 10 preserves all prior tables and file bytes without unpu
   );
   store.close();
   const upgraded = new DatabaseSync(path, { readOnly: true });
-  assert.equal(upgraded.prepare("PRAGMA user_version").get()?.user_version, 10);
+  assert.equal(upgraded.prepare("PRAGMA user_version").get()?.user_version, 11);
   assert.deepEqual(rows(upgraded), before);
   assert.equal(
     upgraded.prepare("SELECT count(*) AS n FROM attachment_operations").get()
@@ -109,7 +109,7 @@ void test("public 9 to 10 preserves all prior tables and file bytes without unpu
   assert.deepEqual(upgraded.prepare("PRAGMA foreign_key_check").all(), []);
   upgraded.close();
   assert.deepEqual(readFileSync(join(dir, "uploads", key)), bytes);
-  assert.deepEqual(validateBackup(dir), { schemaVersion: 10, fileCount: 1 });
+  assert.deepEqual(validateBackup(dir), { schemaVersion: 11, fileCount: 1 });
 });
 
 void test("a schema10 label without the attachment journal is rejected without changing bytes", (t) => {

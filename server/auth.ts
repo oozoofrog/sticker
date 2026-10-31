@@ -5,6 +5,10 @@ import {
   timingSafeEqual,
 } from "node:crypto";
 import { z } from "zod";
+import type {
+  ClientGrantService,
+  ManagedPrincipal,
+} from "./features/client-grants.js";
 import type { Actor } from "./types.js";
 export interface AgentConfig {
   id: string;
@@ -42,7 +46,19 @@ const owner: Actor = {
   canWrite: true,
   projectIds: null,
 };
+export interface AuthenticatedPrincipal {
+  actor: Actor;
+  access?: ManagedPrincipal["access"];
+}
 export class AuthManager {
+  private registry?: ClientGrantService;
+  attachManagedRegistry(registry: ClientGrantService) {
+    if (this.registry) throw new Error("Managed registry already attached");
+    registry.attachStatic(
+      this.agents.map(({ id, tokenHash }) => ({ id, tokenHash })),
+    );
+    this.registry = registry;
+  }
   private salt = randomBytes(32);
   private passwordHash?: Buffer;
   private sessions = new Map<string, number>();
@@ -72,6 +88,7 @@ export class AuthManager {
   directory(): Actor[] {
     return [
       { ...owner },
+      ...(this.registry?.directory() ?? []),
       ...this.agents.map((agent) => ({
         id: agent.id,
         name: agent.name,
@@ -88,7 +105,10 @@ export class AuthManager {
       .find((x) => x.startsWith("sticker_session="))
       ?.slice(16);
   }
-  authenticate(authorization?: string, cookie?: string): Actor | null {
+  resolve(
+    authorization?: string,
+    cookie?: string,
+  ): AuthenticatedPrincipal | null {
     if (authorization !== undefined) {
       if (!authorization.startsWith("Bearer ") || authorization.length > 4096)
         return null;
@@ -98,14 +118,16 @@ export class AuthManager {
       );
       return agent
         ? {
-            id: agent.id,
-            name: agent.name,
-            role: "agent",
-            canWrite: agent.canWrite,
-            projectIds:
-              agent.projectIds === null ? null : [...agent.projectIds],
+            actor: {
+              id: agent.id,
+              name: agent.name,
+              role: "agent",
+              canWrite: agent.canWrite,
+              projectIds:
+                agent.projectIds === null ? null : [...agent.projectIds],
+            },
           }
-        : null;
+        : (this.registry?.resolveHash(hash.toString("hex")) ?? null);
     }
     const token = this.cookieToken(cookie);
     if (!token || token.length > 128) return null;
@@ -116,7 +138,10 @@ export class AuthManager {
       this.sessions.delete(key);
       return null;
     }
-    return { ...owner };
+    return { actor: { ...owner } };
+  }
+  authenticate(authorization?: string, cookie?: string): Actor | null {
+    return this.resolve(authorization, cookie)?.actor ?? null;
   }
   login(password: unknown, ip: string): string | null {
     if (!this.passwordHash) return null;

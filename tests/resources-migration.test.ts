@@ -92,7 +92,7 @@ void test("v6 resource migration preserves legacy issue/file/template provenance
   } finally {
     store.close();
   }
-  assert.deepEqual(validateBackup(root), { schemaVersion: 10, fileCount: 3 });
+  assert.deepEqual(validateBackup(root), { schemaVersion: 11, fileCount: 3 });
   cpSync(root, restore, { recursive: true });
   const reopened = new Store(restore);
   try {
@@ -121,14 +121,14 @@ void test("v6 resource migration preserves legacy issue/file/template provenance
   writeFileSync(join(root, "uploads", firstKey), "other content");
   assert.throws(() => validateBackup(root), /checksum/i);
 });
-void test("resource schema backup accepts only actually implemented versions 1–10 and refuses future bytes unchanged", (t) => {
+void test("resource schema backup accepts only actually implemented versions 1–11 and refuses future bytes unchanged", (t) => {
   const root = mkdtempSync(join(tmpdir(), "sticker-resource-future-"));
   t.after(() => {
     rmSync(root, { recursive: true, force: true });
   });
   const store = new Store(root);
   store.close();
-  assert.equal(validateBackup(root).schemaVersion, 10);
+  assert.equal(validateBackup(root).schemaVersion, 11);
   const path = join(root, "sticker.sqlite"),
     db = new DatabaseSync(path);
   db.exec("PRAGMA user_version=999");
@@ -136,7 +136,7 @@ void test("resource schema backup accepts only actually implemented versions 1�
   const before = readFileSync(path);
   assert.throws(
     () => validateBackup(root),
-    /Expected 1, 2, 3, 4, 5, 6, 7, 8, 9, 10\./,
+    /Expected 1, 2, 3, 4, 5, 6, 7, 8, 9, 10, 11\./,
   );
   assert.deepEqual(readFileSync(path), before);
 });

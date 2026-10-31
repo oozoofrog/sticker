@@ -21,6 +21,17 @@ export const MCP_ROUTE_EQUIVALENTS = [
 ] as const;
 /** Deliberately named pending work and transport boundaries, never a catch-all. */
 export const MCP_ROUTE_EXCEPTIONS = [
+  ...[
+    "POST /api/client-grants",
+    "POST /api/client-grants/:id/activate",
+    "POST /api/client-grants/:id/revoke",
+    "GET /api/client-grants/operations/:operationId",
+    "GET /api/client-grants/self/verify",
+  ].map((route) => ({
+    route,
+    reason:
+      "Private lifecycle bootstrap transport pending future host adapter; sticker_client_apply is not shipped; no model-visible credential inputs or outputs.",
+  })),
   {
     route: "POST /api/session",
     reason:

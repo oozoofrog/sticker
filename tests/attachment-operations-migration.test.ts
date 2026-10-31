@@ -50,9 +50,9 @@ void test("additive10 preserves valid9 backup and rolls back DDL/version on fail
       undefined,
     );
     migrate(fail);
-    assert.equal(fail.prepare("PRAGMA user_version").get()?.user_version, 10);
+    assert.equal(fail.prepare("PRAGMA user_version").get()?.user_version, 11);
     fail.close();
-    assert.equal(validateBackup(dir).schemaVersion, 10);
+    assert.equal(validateBackup(dir).schemaVersion, 11);
   } finally {
     rmSync(dir, { recursive: true, force: true });
   }
@@ -81,7 +81,7 @@ void test("copied restore and recreated store retain one keyed file/activity, wh
     });
     store.close();
     cpSync(source, restored, { recursive: true });
-    assert.equal(validateBackup(restored).schemaVersion, 10);
+    assert.equal(validateBackup(restored).schemaVersion, 11);
     const fresh = new Store(restored),
       freshFiles = new FileStorage(restored);
     try {
@@ -103,7 +103,7 @@ void test("copied restore and recreated store retain one keyed file/activity, wh
     }
     const path = join(restored, "sticker.sqlite"),
       db = new DatabaseSync(path);
-    db.exec("PRAGMA user_version=11");
+    db.exec("PRAGMA user_version=999");
     db.close();
     const before = readFileSync(path);
     assert.throws(() => new Store(restored), /newer/);

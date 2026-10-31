@@ -1,3 +1,4 @@
+import { ClientGrantService } from "./features/client-grants.js";
 import type { DatabaseSync } from "node:sqlite";
 import type { IssueMutationObserver } from "./store-context.js";
 import { attachmentFileReceipt } from "./file-transfer-receipts.js";
@@ -220,6 +221,7 @@ function reportRow(row: Row): AgentReport {
 /** All authorization and business rules shared by HTTP and MCP live here. */
 export class Store {
   private context: StoreContext;
+  readonly clientGrants: ClientGrantService;
   readonly history: HistoryService;
   readonly github: GithubService;
   readonly resources: ResourceService;
@@ -235,7 +237,7 @@ export class Store {
     dataDir: string,
     clock: () => number = Date.now,
     origin = "http://localhost:8787",
-    actors: readonly Actor[] = [
+    actors: readonly Actor[] | (() => readonly Actor[]) = [
       {
         id: "owner",
         name: "나",
@@ -247,6 +249,7 @@ export class Store {
     githubProvider: GithubProvider = { enabled: false },
   ) {
     this.context = new StoreContext(dataDir, clock);
+    this.clientGrants = new ClientGrantService(this.context);
     this.history = new HistoryService(
       this.context,
       (actor, id, input, metadata) =>
@@ -470,6 +473,7 @@ export class Store {
           "PROJECT_NOT_EMPTY",
           "프로젝트의 이슈·버전·템플릿·자료를 먼저 삭제하세요.",
         );
+      this.clientGrants.revokeProject(projectId);
       this.db.prepare("DELETE FROM projects WHERE id=?").run(projectId);
     });
   }

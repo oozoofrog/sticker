@@ -43,7 +43,7 @@ void test("ordinary route/discovery contract covers every actual route without p
             )
         : [],
     );
-    assert.equal(actual.length, 106);
+    assert.equal(actual.length, 111);
     for (const route of actual) {
       const coverage = routeCoverage(route);
       assert.ok(

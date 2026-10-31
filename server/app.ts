@@ -1,3 +1,8 @@
+import {
+  registerClientGrantRoutes,
+  rejectGrantDuplicateKeys,
+} from "./routes/client-grants.js";
+import type { AuthenticatedPrincipal } from "./auth.js";
 import { registerFileTransferRoutes } from "./routes/file-transfers.js";
 import {
   attachmentFileReceipt,
@@ -73,11 +78,17 @@ export function createApp(config: AppConfig) {
       dataDir,
       Date.now,
       appOrigin.origin,
-      auth.directory(),
+      () => auth.directory(),
       config.githubProvider,
     ),
     files = new FileStorage(dataDir),
     app = express();
+  try {
+    auth.attachManagedRegistry(store.clientGrants);
+  } catch (error) {
+    store.close();
+    throw error;
+  }
   const origins = new Set([appOrigin.origin]);
   if (["localhost", "127.0.0.1"].includes(appOrigin.hostname)) {
     const alias = new URL(appOrigin);
@@ -128,7 +139,10 @@ export function createApp(config: AppConfig) {
     );
     next();
   });
-  app.use("/api", express.json({ limit: "512kb" }));
+  app.use(
+    "/api",
+    express.json({ limit: "512kb", verify: rejectGrantDuplicateKeys }),
+  );
   app.post("/api/session", (req, res) => {
     // Explicit MCP modes consume existing authority; browser login is unmarked.
     if (req.headers["x-sticker-auth-mode"] !== undefined)
@@ -136,6 +150,17 @@ export function createApp(config: AppConfig) {
         401,
         "UNAUTHENTICATED",
         "이 인증 방식에서는 기존 자격증명이 필요합니다.",
+      );
+    // Login is registered before general auth admission. A provisional Bearer
+    // must not enter this handler, even when an independent password is supplied.
+    // Explicit MCP-mode rejection above and ordinary/static login stay unchanged.
+    if (
+      auth.resolve(req.headers.authorization)?.access?.state === "provisional"
+    )
+      throw new DomainError(
+        403,
+        "ACTIVATION_REQUIRED",
+        "연결 활성화가 필요합니다.",
       );
     if (!req.is("application/json"))
       throw new DomainError(415, "CONTENT_TYPE", "JSON 요청이 필요합니다.");
@@ -185,15 +210,31 @@ export function createApp(config: AppConfig) {
     const principal = mismatch
       ? null
       : expected === "owner-session"
-        ? auth.authenticate(undefined, req.headers.cookie)
+        ? auth.resolve(undefined, req.headers.cookie)
         : localPolicy && req.headers.authorization === undefined
-          ? { ...localOwnerActor }
-          : auth.authenticate(req.headers.authorization, req.headers.cookie);
+          ? { actor: { ...localOwnerActor } }
+          : auth.resolve(req.headers.authorization, req.headers.cookie);
     if (!principal)
       return res
         .status(401)
         .json({ error: "로그인이 필요합니다.", code: "UNAUTHENTICATED" });
-    (req as Request & { actor: Actor }).actor = principal;
+    (req as Request & { actor: Actor }).actor = principal.actor;
+    (req as Request & { principal: AuthenticatedPrincipal }).principal =
+      principal;
+    if (
+      principal.access?.state === "provisional" &&
+      !(
+        req.method === "GET" &&
+        ["/api/session", "/api/client-grants/self/verify"].includes(
+          req.originalUrl,
+        )
+      )
+    )
+      throw new DomainError(
+        403,
+        "ACTIVATION_REQUIRED",
+        "연결 활성화가 필요합니다.",
+      );
     if (
       !["GET", "HEAD", "OPTIONS"].includes(req.method) &&
       !req.headers.authorization &&
@@ -207,7 +248,12 @@ export function createApp(config: AppConfig) {
   app.get("/api/access-mode", (_req, res) =>
     res.json({ mode: mode ?? "password" }),
   );
-  app.get("/api/session", (req, res) => res.json({ actor: actor(req) }));
+  app.get("/api/session", (req, res) => {
+    const access = (req as Request & { principal: AuthenticatedPrincipal })
+      .principal.access;
+    res.json({ actor: actor(req), ...(access ? { access } : {}) });
+  });
+  registerClientGrantRoutes(app, store.clientGrants);
   app.delete("/api/session", (req, res) => {
     if (localPolicy)
       throw new DomainError(

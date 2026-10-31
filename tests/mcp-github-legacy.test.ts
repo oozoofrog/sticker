@@ -174,7 +174,18 @@ void test("legacy catalogue exposes exactly twelve new tools and complete bounde
         visibleTools: [...visibleTools, "one-too-many"],
       });
     }
-    assert.equal(MCP_ROUTE_EXCEPTIONS.length, 2);
+    assert.deepEqual(
+      MCP_ROUTE_EXCEPTIONS.map((entry) => entry.route).sort(),
+      [
+        "POST /api/session",
+        "GET /{*path}",
+        "POST /api/client-grants",
+        "POST /api/client-grants/:id/activate",
+        "POST /api/client-grants/:id/revoke",
+        "GET /api/client-grants/operations/:operationId",
+        "GET /api/client-grants/self/verify",
+      ].sort(),
+    );
     assert.deepEqual(MCP_PARTIAL_FILE_ROUTES, []);
     for (const name of [
       "begin_upload",

@@ -1,3 +1,4 @@
+import { clientGrants } from "./011-client-grants.js";
 import { attachmentOperations } from "./010-attachment-operations.js";
 import { github } from "./008-github.js";
 import type { DatabaseSync } from "node:sqlite";
@@ -24,6 +25,7 @@ export const migrations: readonly Migration[] = [
   { version: 8, run: github },
   { version: 9, run: history },
   { version: 10, run: attachmentOperations },
+  { version: 11, run: clientGrants },
 ];
 /** One transaction for every pending migration; never mutate a future-version database. */
 export function migrate(

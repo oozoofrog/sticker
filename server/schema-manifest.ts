@@ -369,7 +369,7 @@ const throughV9 = {
     ],
   },
 } as const;
-export const schemaManifests = {
+const throughV10 = {
   ...throughV9,
   10: {
     ...throughV9[9],
@@ -387,6 +387,49 @@ export const schemaManifests = {
     ],
   },
 } as const;
+export const schemaManifests = {
+  ...throughV10,
+  11: {
+    ...throughV10[10],
+    managed_client_grants: [
+      "grantId",
+      "agentId",
+      "installationId",
+      "connectionId",
+      "clientId",
+      "approvalDigest",
+      "tokenHash",
+      "projectId",
+      "requestedCanWrite",
+      "ownerId",
+      "planExpiresAt",
+      "provisionOperationId",
+      "revision",
+      "provisionalUntil",
+      "state",
+      "createdAt",
+      "updatedAt",
+      "reason",
+    ],
+    client_grant_operations: [
+      "ownerId",
+      "operationId",
+      "phase",
+      "grantId",
+      "fingerprint",
+      "receipt",
+      "createdAt",
+    ],
+    client_grant_audit: [
+      "id",
+      "grantId",
+      "authorId",
+      "action",
+      "revision",
+      "createdAt",
+    ],
+  },
+} as const;
 export type SchemaVersion = keyof typeof schemaManifests;
 export function isSchemaVersion(value: unknown): value is SchemaVersion {
   return (
@@ -399,6 +442,7 @@ export function isSchemaVersion(value: unknown): value is SchemaVersion {
     value === 7 ||
     value === 8 ||
     value === 9 ||
-    value === 10
+    value === 10 ||
+    value === 11
   );
 }
