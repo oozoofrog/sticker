@@ -698,7 +698,7 @@ void test("ordinary safe observations, maintenance and owner-session teardown pr
   const f = await fixture();
   try {
     const tools = (await f.clients[0].client.listTools()).tools;
-    assert.equal(tools.length, 97);
+    assert.equal(tools.length, 109);
     const metadata = await f.ok(
       "owner",
       "sticker_get_mcp_settings",

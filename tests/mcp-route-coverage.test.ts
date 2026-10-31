@@ -67,7 +67,7 @@ void test("ordinary route/discovery contract covers every actual route without p
         `Coverage targets absent route ${entry.route}`,
       );
     const tools = (await f.clients[0].client.listTools()).tools;
-    assert.equal(new Set(tools.map((t) => t.name)).size, 97);
+    assert.equal(new Set(tools.map((t) => t.name)).size, 109);
     assert.deepEqual(
       tools.map((t) => t.name).sort(),
       MCP_CATALOGUE.map((t) => t.tool).sort(),

@@ -55,6 +55,151 @@ function entry(
 // A catalogue of shipped tools, not a claim that all product HTTP actions are exposed.
 export const MCP_CATALOGUE: readonly McpCatalogueEntry[] = [
   entry(
+    "list_github_sources",
+    ["GET /api/projects/:id/github/sources"],
+    "write",
+    {
+      authority: "owner",
+      readback: "sticker_get_github_connection",
+      conditions: [
+        "project_scope",
+        "issues_ephemeral_owner_bound_source_tickets",
+        "no_raw_credentials",
+      ],
+    },
+  ),
+  entry(
+    "list_github_repositories",
+    ["POST /api/projects/:id/github/repositories"],
+    "write",
+    {
+      authority: "owner",
+      readback: "sticker_list_github_sources",
+      conditions: [
+        "owner_project_bound_source_and_cursor",
+        "provider_read",
+        "issues_ephemeral_selection_tickets",
+      ],
+    },
+  ),
+  entry(
+    "connect_github_selection",
+    ["POST /api/projects/:id/github/select"],
+    "write",
+    {
+      authority: "owner",
+      confirm: "literal-true",
+      readback: "sticker_get_github_selection_status",
+      conditions: [
+        "original_source_selection_revision",
+        "provider_revalidates_target",
+        "no_automatic_retry",
+      ],
+    },
+  ),
+  entry(
+    "get_github_selection_status",
+    ["POST /api/projects/:id/github/selection-status"],
+    "read",
+    {
+      authority: "owner",
+      confirm: "literal-true",
+      conditions: [
+        "original_source_selection_revision",
+        "expired_ticket_is_not_proof_of_outcome",
+      ],
+    },
+  ),
+  entry("get_github_connection", ["GET /api/projects/:id/github"], "read", {
+    authority: "owner",
+    conditions: ["project_scope", "cached_metadata_only"],
+  }),
+  entry("set_github_connection", ["PUT /api/projects/:id/github"], "write", {
+    authority: "owner",
+    confirm: "literal-true",
+    readback: "sticker_get_github_connection",
+    conditions: [
+      "project_scope",
+      "revision",
+      "existing_custom_configuration_reference_only",
+    ],
+  }),
+  entry(
+    "disconnect_github_connection",
+    ["DELETE /api/projects/:id/github"],
+    "write",
+    {
+      authority: "owner",
+      confirm: "literal-true",
+      destructive: true,
+      readback: "sticker_get_github_connection",
+      conditions: ["project_scope", "revision", "local_disconnect_only"],
+    },
+  ),
+  entry(
+    "verify_github_connection",
+    ["POST /api/projects/:id/github/verify"],
+    "write",
+    {
+      authority: "owner",
+      confirm: "literal-true",
+      readback: "sticker_get_github_connection",
+      conditions: [
+        "project_scope",
+        "revision",
+        "provider_read_writes_verification_or_error_state",
+        "not_issue_write_permission_verification",
+      ],
+    },
+  ),
+  entry(
+    "add_github_evidence",
+    ["POST /api/issues/:id/github-evidence"],
+    "write",
+    {
+      readback: "sticker_get_github_evidence",
+      conditions: [
+        "current_issue_scope_and_write_access",
+        "issueRevision",
+        "connected_repository",
+        "duplicate_url_reuses_existing_evidence",
+        "no_operation_id_replay_contract",
+      ],
+    },
+  ),
+  entry("get_github_evidence_item", ["GET /api/github-evidence/:id"], "read", {
+    conditions: ["current_issue_scope", "cached_metadata_only"],
+  }),
+  entry(
+    "remove_github_evidence",
+    ["DELETE /api/github-evidence/:id"],
+    "write",
+    {
+      destructive: true,
+      readback: "sticker_get_github_evidence",
+      conditions: [
+        "current_issue_scope_and_write_access",
+        "revision",
+        "local_evidence_only",
+      ],
+    },
+  ),
+  entry(
+    "refresh_github_evidence",
+    ["POST /api/github-evidence/:id/refresh"],
+    "write",
+    {
+      readback: "sticker_get_github_evidence_item",
+      conditions: [
+        "current_issue_scope_and_write_access",
+        "revision",
+        "connection_unchanged_after_provider_read",
+        "writes_snapshot_or_error_state",
+      ],
+    },
+  ),
+
+  entry(
     "get_capabilities",
     ["GET /api/session", "GET /api/maintenance"],
     "read",

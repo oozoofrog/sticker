@@ -295,13 +295,15 @@ void test("provisional MCP help is truthful and has no callable secret-provision
     await server.close();
   });
   const tools = await client.listTools();
+  assert.equal(tools.tools.length, 109);
   assert.ok(
     !tools.tools.some((tool) => /client_apply|grant|token/i.test(tool.name)),
   );
   const help = await client.callTool({
     name: "sticker_get_help",
-    arguments: {},
+    arguments: { visibleTools: tools.tools.map((tool) => tool.name) },
   });
+  assert.equal(!!help.isError, false);
   const text = JSON.stringify(help);
   assert.equal(text.includes("activation_required"), true);
   assert.ok(!text.includes(fakeToken));
@@ -311,6 +313,22 @@ void test("provisional MCP help is truthful and has no callable secret-provision
     arguments: {},
   });
   assert.equal(capabilities.isError, true);
+  assert.equal(
+    (await x.call(`/api/client-grants/${x.grantId}/activate`, "POST", x.phase))
+      .status,
+    200,
+  );
+  const githubHelp = await client.callTool({
+    name: "sticker_get_help",
+    arguments: { tool: "sticker_get_github_connection" },
+  });
+  assert.equal(!!githubHelp.isError, false);
+  assert.match(JSON.stringify(githubHelp), /owner_required/);
+  const github = await client.callTool({
+    name: "sticker_get_github_connection",
+    arguments: { projectId: x.f.project.id },
+  });
+  assert.equal(github.isError, true);
 });
 void test("live template directory, two simultaneous activation CAS decisions and operation readback", async (t) => {
   const x = await fixture(t);
