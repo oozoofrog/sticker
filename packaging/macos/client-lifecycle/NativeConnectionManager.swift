@@ -591,6 +591,8 @@ actor NativeConnectionManager {
         var requestId="invalid"
         do {
             let request=try LifecycleWire.decodeRequest(data);requestId=request.requestId
+            // The requested client must match the independently verified target.
+            if let target=request.clientId,target != context.identity.clientId { throw LifecycleFailure.unsupportedProfile }
             let result:Any
             switch request.method {
             case .detectClients:try trusted(context);result=try JSONSerialization.jsonObject(with:JSONEncoder().encode(await ClientProfiles.detect(using:discovery,now:await clock.now())))

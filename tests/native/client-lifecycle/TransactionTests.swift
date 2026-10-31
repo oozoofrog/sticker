@@ -1,6 +1,7 @@
 import Foundation
 
 func transactionTests() async throws {
+    try await requestedClientTargetTests()
     for action in [ConnectionAction.connect,.update,.remove] {
         let h=try await TransactionHarness.make(available:false)
         do { _ = try await h.manager.planChange(action:action,expectedOwnershipRevision:0,context:h.context);Check.that(false,"uncertified writer must reject") }
@@ -157,11 +158,13 @@ actor TransactionTestCredentials: LifecycleCredentialBootstrap {
 actor TransactionTestVerification: LifecycleVerificationProvider {
     private var valid=true
     private var proof=true
+    private(set) var checks=0
     func setProof(_ value:Bool) { proof=value }
     func setValid(_ value:Bool) { valid=value }
     func provisionalProof(_ credential:LifecycleCredential,rights:GrantSummary) async -> Bool { proof }
     func verify(_ credential:LifecycleCredential,rights:GrantSummary) async -> LifecycleVerification {
-        LifecycleVerification(protocolCheck:valid ? .toolsVerified:.failed,actualClient:.refreshRequired,identityMatches:valid,rights:rights,expectedToolCount:2,availableToolCount:valid ? 2:0,missingToolNames:[])
+        checks+=1
+        return LifecycleVerification(protocolCheck:valid ? .toolsVerified:.failed,actualClient:.refreshRequired,identityMatches:valid,rights:rights,expectedToolCount:2,availableToolCount:valid ? 2:0,missingToolNames:[])
     }
 }
 actor TransactionTestHooks: LifecycleTransactionHooks {
@@ -202,5 +205,33 @@ struct TransactionHarness {
         let reopened=try await OwnedLifecycleJournal.open(persistence)
         return NativeConnectionManager(store:reopened,writers:TransactionTestWriters(writer:writer,available:true),clock:clock,owner:owner,credentials:credentials,verifier:verification,
                                        decisions:decisions,hooks:hooks,discovery:TransactionEmptyDiscovery(),launcherVersion:"2.0.0")
+    }
+}
+
+func requestedClientTargetTests() async throws {
+    let h=try await TransactionHarness.make()
+    let connected=try await h.plan();try await h.approve(connected);_ = try await h.apply(connected)
+    let mutations=await h.store.mutationCount,grants=await h.credentials.provisions,writes=await h.writer.writes,checks=await h.verification.checks
+    var rejected:[Bool]=[]
+    for target in [ClientId.claudeCodeLocal,.claudeDesktop] {
+        for method in ["planChange","verifyConnection"] {
+            var request:[String:Any]=["version":1,"requestId":"target-mismatch","method":method,"clientId":target.rawValue,"expectedOwnershipRevision":1]
+            if method=="planChange" { request["action"]="update" }
+            let response=await h.manager.handle(try JSONSerialization.data(withJSONObject:request),context:h.context)
+            try LifecycleWire.validateResponse(response)
+            let value=try JSONSerialization.jsonObject(with:response) as! [String:Any]
+            rejected.append((value["error"] as? [String:Any])?["code"] as? String == "unsupported_profile")
+        }
+    }
+    Check.that(rejected.allSatisfy { $0 },"plan and verification reject requested client that differs from trusted target")
+    let afterMutations=await h.store.mutationCount,afterGrants=await h.credentials.provisions,afterWrites=await h.writer.writes,afterChecks=await h.verification.checks,previews=await h.manager.retainedPlanCount()
+    Check.that(afterMutations==mutations && afterGrants==grants && afterWrites==writes && afterChecks==checks && previews==0,"client mismatch never routes to another target or creates a preview")
+    for method in ["planChange","verifyConnection"] {
+        var request:[String:Any]=["version":1,"requestId":"matching-target","method":method,"clientId":"codex-local","expectedOwnershipRevision":1]
+        if method=="planChange" { request["action"]="update" }
+        let response=await h.manager.handle(try JSONSerialization.data(withJSONObject:request),context:h.context)
+        try LifecycleWire.validateResponse(response)
+        let value=try JSONSerialization.jsonObject(with:response) as! [String:Any]
+        Check.that((value["result"] as? [String:Any])?["clientId"] as? String == "codex-local","matching trusted client still plans and verifies")
     }
 }
