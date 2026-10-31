@@ -29,7 +29,26 @@ export interface IssueMutationMetadata {
   detail: string;
   sourceChangeId?: string;
 }
+export interface IssueMutationEvent {
+  actor: Actor;
+  before: Issue | null;
+  after: Issue;
+  activityId: string;
+  metadata: IssueMutationMetadata;
+}
+export interface IssueMutationObserver {
+  record(event: IssueMutationEvent): void;
+  committed(): void;
+}
 export class StoreContext {
+  private readonly issueObservers = new Set<IssueMutationObserver>();
+  private readonly committedObservers = new Set<IssueMutationObserver>();
+  observeIssueMutations(observer: IssueMutationObserver) {
+    this.issueObservers.add(observer);
+    return () => {
+      this.issueObservers.delete(observer);
+    };
+  }
   onIssueMutation?: (
     actor: Actor,
     before: Issue | null,
@@ -49,11 +68,13 @@ export class StoreContext {
   }
   tx<T>(fn: () => T): T {
     this.db.exec("BEGIN IMMEDIATE");
+    this.committedObservers.clear();
+    let result: T;
     try {
-      const result = fn();
+      result = fn();
       this.db.exec("COMMIT");
-      return result;
     } catch (error) {
+      this.committedObservers.clear();
       this.db.exec("ROLLBACK");
       if (
         error instanceof Error &&
@@ -66,6 +87,18 @@ export class StoreContext {
         );
       throw error;
     }
+    const observers = [...this.committedObservers];
+    this.committedObservers.clear();
+    for (const observer of observers) {
+      // Advisory wake only: committed writes must never be reported as rolled back.
+      // Durable observers recover missed notifications when they restart.
+      try {
+        observer.committed();
+      } catch {
+        /* keep the committed result */
+      }
+    }
+    return result;
   }
   private table(table: string) {
     if (!tables.has(table)) throw new Error("Unknown table");
@@ -168,6 +201,10 @@ export class StoreContext {
       throw new Error("Issue mutation requires an existing transaction.");
     const id = this.activity(actor, after.id, metadata.action, metadata.detail);
     this.onIssueMutation?.(actor, before, after, id, metadata.sourceChangeId);
+    for (const observer of this.issueObservers) {
+      observer.record({ actor, before, after, activityId: id, metadata });
+      this.committedObservers.add(observer);
+    }
   }
   /** Shared write seam, inside the caller's transaction/savepoint; never starts a nested transaction. */
   changeIssue(
