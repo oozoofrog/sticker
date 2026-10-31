@@ -62,7 +62,16 @@ void test("official MCP template reads, preview and normal create share exact va
       tools.some((tool) =>
         /sticker_(create|delete|update)_.*template/.test(tool.name),
       ),
-      false,
+      true,
+    );
+    assert.equal(
+      (
+        await client.callTool({
+          name: "sticker_delete_issue_template",
+          arguments: { templateId: template.template.id, revision: 1 },
+        })
+      ).isError,
+      true,
     );
     const list = data(
       await client.callTool({

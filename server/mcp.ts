@@ -1,3 +1,12 @@
+import { registerLifecycleTools } from "./mcp/lifecycle.js";
+import { registerSettingsTools } from "./mcp/settings.js";
+import { STATUSES } from "./types.js";
+import {
+  versionSchema,
+  commentSchema,
+  attachmentSchema,
+  issueDetailSchema,
+} from "./response-schemas.js";
 import { registerResourceTools } from "./mcp/resources.js";
 import { registerHistoryTools } from "./mcp/history.js";
 import { registerGithubTools } from "./mcp/github.js";
@@ -9,7 +18,7 @@ import { registerRelationTools } from "./mcp/relations.js";
 import { registerSessionTools } from "./mcp/sessions.js";
 import {
   bootstrapSchema,
-  apiErrorSchema,
+  projectSchema,
   issueSchema,
 } from "./response-schemas.js";
 /** STDIO adapter only: all authorization, attribution and persistence live in the HTTP domain API. */
@@ -18,10 +27,21 @@ import { StdioServerTransport } from "@modelcontextprotocol/sdk/server/stdio.js"
 import type { CallToolResult } from "@modelcontextprotocol/sdk/types.js";
 import * as z from "zod";
 import { pathToFileURL } from "node:url";
+import {
+  ApiError,
+  createStickerTransport,
+  mcpOptionsFromEnvironment,
+  type StickerMcpOptions,
+} from "./mcp/transport.js";
+import { registerCapabilityTools } from "./mcp/capabilities.js";
+import { catalogueEntry } from "./mcp/catalogue.js";
+import type { ToolAnnotations } from "@modelcontextprotocol/sdk/types.js";
+export { mcpOptionsFromEnvironment } from "./mcp/transport.js";
+export type { StickerMcpOptions, McpAuthentication } from "./mcp/transport.js";
 
 const id = z.string().min(1).max(128);
 const text = z.string().max(100_000);
-const status = z.enum(["backlog", "ready", "in_progress", "waiting", "done"]);
+const status = z.enum(STATUSES);
 const issueFields = {
   title: z.string().min(1).max(300).optional(),
   description: text.optional(),
@@ -61,124 +81,25 @@ const linkUrl = z
   );
 const MAX_MCP_FILE_BYTES = 5 * 1024 * 1024;
 
-class ApiError extends Error {
-  constructor(
-    public status: number,
-    public code: string,
-    message: string,
-    public fields?: Record<string, string>,
-    public maintenance?: z.infer<typeof apiErrorSchema>["maintenance"],
-    public retryAfterSeconds?: number,
-  ) {
-    super(message);
-  }
-}
-function validateConfig(apiUrl: string, token: string) {
-  if (token.trim().length < 16)
-    throw new Error(
-      "STICKER_AGENT_TOKEN must contain a configured agent token (at least 16 characters).",
-    );
-  const url = new URL(apiUrl);
-  if (
-    url.username ||
-    url.password ||
-    url.search ||
-    url.hash ||
-    !["", "/"].includes(url.pathname)
-  )
-    throw new Error(
-      "STICKER_API_URL must be an origin, without credentials, query, fragment or path.",
-    );
-  if (
-    url.protocol !== "https:" &&
-    !(
-      url.protocol === "http:" &&
-      ["127.0.0.1", "localhost", "[::1]"].includes(url.hostname)
-    )
-  )
-    throw new Error("Use HTTPS for non-loopback STICKER_API_URL destinations.");
-  return url.origin;
-}
-
-export function createStickerMcp(apiUrl: string, token: string): McpServer {
-  const origin = validateConfig(apiUrl, token);
+export function createStickerMcp(apiUrl: string, token: string): McpServer;
+export function createStickerMcp(options: StickerMcpOptions): McpServer;
+export function createStickerMcp(
+  config: string | StickerMcpOptions,
+  token?: string,
+): McpServer {
+  const options: StickerMcpOptions =
+    typeof config === "string"
+      ? { apiUrl: config, auth: { mode: "agent", token: token ?? "" } }
+      : config;
+  const transport = createStickerTransport(options);
+  const { request, json, deleteNoContent } = transport;
   const server = new McpServer(
     { name: "sticker", version: "0.1.0" },
     {
       instructions:
-        "스티커는 이슈와 기획·작업 문서를 함께 관리하는 저장소입니다. 작업 실행 도구가 아닙니다. waiting은 승인 대기이며 자동 실행하지 않습니다. done은 구현 완료, closed는 소유자가 확인한 종결입니다. 상태 보고는 자기 보고이며 실행 중인 프로세스를 증명하지 않습니다. 수정 전 현재 revision을 읽고 충돌 시 다시 읽으세요.",
+        "스티커는 이슈와 기획·작업 문서를 함께 관리하는 저장소입니다. 작업 실행 도구가 아닙니다. waiting은 대기·막힘을 기록하며 그 자체로 승인되지 않습니다. done은 구현 완료, closed는 소유자가 확인한 종결입니다. 상태 보고는 자기 보고이며 실행 중인 프로세스를 증명하지 않습니다. sticker_get_capabilities와 sticker_get_help로 시작하고 접근 가능한 프로젝트를 조회하세요. 빈 저장소의 프로젝트 생성에는 명시적인 소유자 권한이 필요합니다. 수정 전 현재 revision을 읽고 충돌 시 다시 읽으세요.",
     },
   );
-  const scrub = (value: string) =>
-    value.replaceAll(token, "[redacted]").slice(0, 500);
-  async function request(
-    path: string,
-    method = "GET",
-    body?: unknown,
-  ): Promise<Response> {
-    let response: Response;
-    try {
-      response = await fetch(`${origin}${path}`, {
-        method,
-        headers: {
-          authorization: `Bearer ${token}`,
-          ...(body instanceof FormData
-            ? {}
-            : body !== undefined
-              ? { "content-type": "application/json" }
-              : {}),
-        },
-        body:
-          body instanceof FormData
-            ? body
-            : body === undefined
-              ? undefined
-              : JSON.stringify(body),
-        signal: AbortSignal.timeout(15_000),
-        redirect: "error",
-      });
-    } catch {
-      throw new ApiError(
-        503,
-        "api_unavailable",
-        "스티커 API에 연결하지 못했습니다. 주소, 실행 상태, TLS 연결을 확인하세요.",
-      );
-    }
-    if (!response.ok) {
-      const raw: unknown = await response.json().catch(() => null);
-      const parsed = apiErrorSchema.safeParse(raw);
-      const error = parsed.success ? parsed.data : {};
-      throw new ApiError(
-        response.status,
-        typeof error.code === "string" ? scrub(error.code) : "api_error",
-        typeof error.error === "string"
-          ? scrub(error.error)
-          : `API HTTP ${String(response.status)}`,
-        error.fields
-          ? Object.fromEntries(
-              Object.entries(error.fields)
-                .slice(0, 20)
-                .map(([key, value]) => [scrub(key), scrub(value)]),
-            )
-          : undefined,
-        error.code === "MAINTENANCE" &&
-          error.maintenance &&
-          !JSON.stringify(error.maintenance).includes(token)
-          ? error.maintenance
-          : undefined,
-        error.code === "MAINTENANCE" ? error.retryAfterSeconds : undefined,
-      );
-    }
-    return response;
-  }
-  async function json(
-    path: string,
-    method = "GET",
-    body?: unknown,
-  ): Promise<unknown> {
-    const res = await request(path, method, body);
-    return res.status === 204 ? { ok: true } : res.json();
-  }
   const bootstrap = async () =>
     bootstrapSchema.parse(await json("/api/bootstrap"));
   const result = (value: unknown): CallToolResult => ({
@@ -186,31 +107,12 @@ export function createStickerMcp(apiUrl: string, token: string): McpServer {
   });
   async function safely(
     run: () => Promise<CallToolResult>,
+    readback?: string,
   ): Promise<CallToolResult> {
     try {
       return await run();
     } catch (error) {
-      if (error instanceof ApiError)
-        return {
-          ...result({
-            error: scrub(error.message),
-            code: error.code,
-            status: error.status,
-            ...(error.fields ? { fields: error.fields } : {}),
-            ...(error.maintenance ? { maintenance: error.maintenance } : {}),
-            ...(error.retryAfterSeconds
-              ? { retryAfterSeconds: error.retryAfterSeconds }
-              : {}),
-          }),
-          isError: true,
-        };
-      return {
-        ...result({
-          error: "요청을 처리하지 못했습니다.",
-          code: "adapter_error",
-        }),
-        isError: true,
-      };
+      return transport.formatFailure(error, readback);
     }
   }
   function tool<S extends z.ZodRawShape>(
@@ -219,7 +121,9 @@ export function createStickerMcp(apiUrl: string, token: string): McpServer {
     shape: S,
     run: (args: z.infer<z.ZodObject<S>>) => Promise<unknown>,
     readOnly = false,
+    annotations?: ToolAnnotations,
   ) {
+    const entry = catalogueEntry(name);
     const schema = z.object(shape).strict();
     server.registerTool<z.ZodRawShape, typeof schema>(
       name,
@@ -228,30 +132,55 @@ export function createStickerMcp(apiUrl: string, token: string): McpServer {
         inputSchema: schema,
         annotations: {
           readOnlyHint: readOnly,
-          destructiveHint: false,
+          destructiveHint: entry.destructive ?? false,
           idempotentHint: readOnly,
-          openWorldHint: false,
+          openWorldHint: entry.externalEffect !== undefined,
+          ...annotations,
         },
       },
-      async (args) => safely(async () => result(await run(args))),
+      async (args) =>
+        transport.withAction(entry, args, () =>
+          safely(async () => result(await run(args)), entry.readback),
+        ),
     );
   }
+  const featureClient = { tool, json, deleteNoContent };
   registerResourceTools({
-    tool,
-    json,
+    ...featureClient,
     request,
     fail: (status, code, message) => {
       throw new ApiError(status, code, message);
     },
   });
-  registerHistoryTools({ tool, json });
-  registerGithubTools({ tool, json });
-  registerTemplateTools({ tool, json });
-  registerSessionTools({ tool, json });
-  registerRelationTools({ tool, json });
-  registerViewTools({ tool, json });
-  registerReleaseTools({ tool, json });
+  registerHistoryTools(featureClient);
+  registerGithubTools(featureClient);
+  registerTemplateTools(featureClient);
+  registerSessionTools(featureClient);
+  registerRelationTools(featureClient);
+  registerViewTools(featureClient);
+  registerReleaseTools(featureClient);
+  registerCapabilityTools(featureClient, transport);
+  registerLifecycleTools(featureClient);
+  registerSettingsTools(featureClient, transport);
   const e = encodeURIComponent;
+  tool(
+    "sticker_create_project",
+    "소유자 권한으로 첫 프로젝트를 만듭니다. 에이전트 범위는 늘리지 않습니다. 중복 방지 키가 없으므로 응답 유실·timeout은 결과 불확실이며 자동 재전송하지 말고 sticker_list_projects로 확인하세요.",
+    {
+      ...projectFields,
+      name: projectFields.name.unwrap(),
+      key: projectFields.key.unwrap(),
+    },
+    async (input) => {
+      if (transport.mode === "agent")
+        throw new ApiError(
+          403,
+          "owner_required",
+          "프로젝트 생성에는 명시적으로 인증된 소유자 권한이 필요합니다. 에이전트 범위는 변경하지 않습니다.",
+        );
+      return projectSchema.parse(await json("/api/projects", "POST", input));
+    },
+  );
   tool(
     "sticker_list_projects",
     "토큰 범위에서 접근 가능한 프로젝트를 조회합니다.",
@@ -264,7 +193,9 @@ export function createStickerMcp(apiUrl: string, token: string): McpServer {
     "프로젝트 이름/설명을 수정합니다.",
     { projectId: id, ...projectFields },
     async ({ projectId, ...body }) =>
-      json(`/api/projects/${e(projectId)}`, "PATCH", body),
+      projectSchema.parse(
+        await json(`/api/projects/${e(projectId)}`, "PATCH", body),
+      ),
   );
   tool(
     "sticker_list_versions",
@@ -280,20 +211,23 @@ export function createStickerMcp(apiUrl: string, token: string): McpServer {
     "sticker_create_version",
     "프로젝트의 버전을 만듭니다.",
     { projectId: id, ...versionFields, name: versionFields.name.unwrap() },
-    async (a) => json("/api/versions", "POST", a),
+    async (a) => versionSchema.parse(await json("/api/versions", "POST", a)),
   );
   tool(
     "sticker_update_version",
     "버전 상태와 일정을 수정합니다.",
     { versionId: id, revision: z.number().int().positive(), ...versionFields },
     async ({ versionId, ...body }) =>
-      json(`/api/versions/${e(versionId)}`, "PATCH", body),
+      versionSchema.parse(
+        await json(`/api/versions/${e(versionId)}`, "PATCH", body),
+      ),
   );
   tool(
     "sticker_get_issue",
     "이슈와 댓글/활동/첨부 자료, 현재 revision을 읽습니다.",
     { issueId: id },
-    async ({ issueId }) => json(`/api/issues/${e(issueId)}`),
+    async ({ issueId }) =>
+      issueDetailSchema.parse(await json(`/api/issues/${e(issueId)}`)),
     true,
   );
   tool(
@@ -312,21 +246,25 @@ export function createStickerMcp(apiUrl: string, token: string): McpServer {
     "최신 revision으로 이슈를 수정합니다. 409이면 다시 조회하세요. 에이전트는 closed로 종결할 수 없습니다.",
     { issueId: id, revision: z.number().int().positive(), ...issueFields },
     async ({ issueId, ...body }) =>
-      json(`/api/issues/${e(issueId)}`, "PATCH", body),
+      issueSchema.parse(await json(`/api/issues/${e(issueId)}`, "PATCH", body)),
   );
   tool(
     "sticker_add_comment",
-    "인증된 에이전트 명의로 댓글을 남깁니다. 작성자 지정은 불가합니다.",
+    "현재 인증 주체 명의로 댓글을 남깁니다. 작성자 지정은 불가합니다.",
     { issueId: id, body: z.string().min(1).max(20_000) },
     async ({ issueId, ...body }) =>
-      json(`/api/issues/${e(issueId)}/comments`, "POST", body),
+      commentSchema.parse(
+        await json(`/api/issues/${e(issueId)}/comments`, "POST", body),
+      ),
   );
   tool(
     "sticker_add_link",
     "http/https 링크를 자료로 첨부합니다. 서버는 링크 대상을 방문하거나 내려받지 않습니다.",
     { issueId: id, name: z.string().min(1).max(255), url: linkUrl },
     async ({ issueId, ...body }) =>
-      json(`/api/issues/${e(issueId)}/links`, "POST", body),
+      attachmentSchema.parse(
+        await json(`/api/issues/${e(issueId)}/links`, "POST", body),
+      ),
   );
   tool(
     "sticker_report_status",
@@ -377,7 +315,9 @@ export function createStickerMcp(apiUrl: string, token: string): McpServer {
         );
       const form = new FormData();
       form.append("file", new Blob([bytes], { type: mimeType }), name);
-      return json(`/api/issues/${e(issueId)}/attachments`, "POST", form);
+      return attachmentSchema.parse(
+        await json(`/api/issues/${e(issueId)}/attachments`, "POST", form),
+      );
     },
   );
   server.registerTool(
@@ -394,49 +334,57 @@ export function createStickerMcp(apiUrl: string, token: string): McpServer {
       },
     },
     async ({ attachmentId }) =>
-      safely(async () => {
-        const res = await request(`/api/attachments/${e(attachmentId)}/file`);
-        const contentLength = Number(res.headers.get("content-length"));
-        if (contentLength > MAX_MCP_FILE_BYTES) {
-          await res.body?.cancel();
-          throw new ApiError(
-            413,
-            "file_too_large",
-            "MCP 읽기는 5 MiB까지 지원합니다. 웹 UI에서 다운로드하세요.",
-          );
-        }
-        const reader = res.body?.getReader();
-        let total = 0;
-        const chunks: Uint8Array[] = [];
-        if (reader)
-          for (;;) {
-            const { value, done } = await reader.read();
-            if (done) break;
-            total += value.byteLength;
-            if (total > MAX_MCP_FILE_BYTES) {
-              await reader.cancel();
+      transport.withAction(
+        catalogueEntry("sticker_read_file"),
+        { attachmentId },
+        () =>
+          safely(async () => {
+            const res = await request(
+              `/api/attachments/${e(attachmentId)}/file`,
+            );
+            const contentLength = Number(res.headers.get("content-length"));
+            if (contentLength > MAX_MCP_FILE_BYTES) {
+              await res.body?.cancel();
               throw new ApiError(
                 413,
                 "file_too_large",
-                "MCP 읽기는 5 MiB까지 지원합니다.",
+                "MCP 읽기는 5 MiB까지 지원합니다. 웹 UI에서 다운로드하세요.",
               );
             }
-            chunks.push(value);
-          }
-        return {
-          content: [
-            {
-              type: "resource",
-              resource: {
-                uri: `sticker://attachments/${e(attachmentId)}`,
-                mimeType:
-                  res.headers.get("content-type") ?? "application/octet-stream",
-                blob: Buffer.concat(chunks).toString("base64"),
-              },
-            },
-          ],
-        };
-      }),
+            const reader = res.body?.getReader();
+            let total = 0;
+            const chunks: Uint8Array[] = [];
+            if (reader)
+              for (;;) {
+                const { value, done } = await reader.read();
+                if (done) break;
+                total += value.byteLength;
+                if (total > MAX_MCP_FILE_BYTES) {
+                  await reader.cancel();
+                  throw new ApiError(
+                    413,
+                    "file_too_large",
+                    "MCP 읽기는 5 MiB까지 지원합니다.",
+                  );
+                }
+                chunks.push(value);
+              }
+            return {
+              content: [
+                {
+                  type: "resource",
+                  resource: {
+                    uri: `sticker://attachments/${e(attachmentId)}`,
+                    mimeType:
+                      res.headers.get("content-type") ??
+                      "application/octet-stream",
+                    blob: Buffer.concat(chunks).toString("base64"),
+                  },
+                },
+              ],
+            };
+          }),
+      ),
   );
   return server;
 }
@@ -446,10 +394,7 @@ if (
   import.meta.url === pathToFileURL(process.argv[1]).href
 ) {
   try {
-    const server = createStickerMcp(
-      process.env.STICKER_API_URL ?? "http://127.0.0.1:8787",
-      process.env.STICKER_AGENT_TOKEN ?? "",
-    );
+    const server = createStickerMcp(mcpOptionsFromEnvironment(process.env));
     await server.connect(new StdioServerTransport());
   } catch (error) {
     process.stderr.write(

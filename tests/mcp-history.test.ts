@@ -9,7 +9,7 @@ import {
   historyListSchema,
   historyDetailSchema,
 } from "../server/contracts/history.js";
-void test("MCP edits produce the same field history; comparison tools are read-only and no agent restore tool exists", async () => {
+void test("MCP edits produce the same field history; comparison tools are read-only and owner-only restore preserves agent restrictions", async () => {
   const f = await sessionHttpFixture();
   const server = createStickerMcp(f.base, f.tokens.agent),
     client = new Client({ name: "history-fixture", version: "1" });
@@ -28,7 +28,13 @@ void test("MCP edits produce the same field history; comparison tools are read-o
       );
     }
     assert.equal(
-      tools.some((tool) => tool.name.includes("restore")),
+      tools.find((tool) => tool.name === "sticker_preview_issue_restore")
+        ?.annotations?.readOnlyHint,
+      true,
+    );
+    assert.equal(
+      tools.find((tool) => tool.name === "sticker_restore_issue_fields")
+        ?.annotations?.readOnlyHint,
       false,
     );
     const updated = await client.callTool({

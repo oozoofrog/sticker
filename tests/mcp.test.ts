@@ -164,9 +164,37 @@ void test("official SDK initializes STDIO, lists tools and calls issue tools wit
         }),
       );
     else if (req.url === "/api/issues/i1" && req.method === "PATCH")
-      res.end(JSON.stringify({ id: "i1", revision: 2, ...body }));
+      res.end(
+        JSON.stringify({
+          id: "i1",
+          projectId: "p1",
+          key: "TST-1",
+          title: "synthetic",
+          description: "",
+          status: "backlog",
+          priority: "none",
+          assignee: "",
+          targetVersionId: null,
+          foundVersionId: null,
+          fixedVersionId: null,
+          labels: [],
+          createdAt: "2026-01-01",
+          updatedAt: "2026-01-01",
+          ...body,
+          revision: 2,
+        }),
+      );
     else if (req.url === "/api/issues/i1/comments")
-      res.end(JSON.stringify({ id: "c1", authorId: "agent-test", ...body }));
+      res.end(
+        JSON.stringify({
+          id: "c1",
+          issueId: "i1",
+          authorId: "agent-test",
+          authorName: "test",
+          createdAt: "2026-01-01",
+          ...body,
+        }),
+      );
     else if (req.url === "/api/reports")
       res.end(JSON.stringify({ agentId: "agent-test", stale: false, ...body }));
     else {
@@ -181,7 +209,7 @@ void test("official SDK initializes STDIO, lists tools and calls issue tools wit
     assert.ok(tools.tools.some((t) => t.name === "sticker_list_projects"));
     assert.ok(tools.tools.some((t) => t.name === "sticker_update_issue"));
     assert.ok(
-      !tools.tools.some((t) => t.name === "sticker_create_project"),
+      tools.tools.some((t) => t.name === "sticker_create_project"),
       "owner-only project creation is not advertised to agent clients",
     );
     assert.ok(!tools.tools.some((t) => /shell|execute|run_agent/.test(t.name)));
@@ -262,9 +290,13 @@ void test("tool errors preserve conflict semantics and never leak bearer credent
 
 void test("caller cannot forge authors, close issues, omit revision or fetch arbitrary URLs", async () => {
   let count = 0;
-  const api = await fixture((_req, res) => {
+  const api = await fixture((_req, res, body) => {
     count++;
-    res.end("{}");
+    assert.equal(body.status, "closed");
+    res.statusCode = 403;
+    res.end(
+      JSON.stringify({ code: "OWNER_REQUIRED", error: "owner required" }),
+    );
   });
   const { client, transport } = connect(api.url);
   try {
@@ -279,13 +311,19 @@ void test("caller cannot forge authors, close issues, omit revision or fetch arb
         arguments: args,
       });
       assert.equal(result.isError, true);
+      if (args.status === "closed")
+        assert.equal(data(result, toolErrorSchema).status, 403);
     }
     const result = await client.callTool({
       name: "sticker_add_link",
       arguments: { issueId: "i1", name: "bad", url: "javascript:alert(1)" },
     });
     assert.equal(result.isError, true);
-    assert.equal(count, 0);
+    assert.equal(
+      count,
+      1,
+      "Only the valid closed-status input reaches authoritative HTTP permission checks",
+    );
   } finally {
     await client.close();
     await api.close();

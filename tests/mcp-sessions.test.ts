@@ -21,7 +21,7 @@ function content<T>(result: unknown, schema: z.ZodType<T>): T {
   const value: unknown = JSON.parse(envelope.content[0].text);
   return schema.parse(value);
 }
-void test("official SDK session tools use authoritative API authorization, dedup events and expose no owner response or closure capability", async () => {
+void test("official SDK session tools use authoritative API authorization, dedup events and retain owner-only response and closure authority", async () => {
   const f = await sessionHttpFixture(),
     server = createStickerMcp(f.base, f.tokens.agent),
     client = new Client({ name: "session-test", version: "1" });
@@ -37,12 +37,9 @@ void test("official SDK session tools use authoritative API authorization, dedup
       "sticker_list_pending_requests",
     ])
       assert.ok(tools.includes(name));
-    assert.equal(
-      tools.some((name) =>
-        /respond|close_session|close_request|approve|resume/.test(name),
-      ),
-      false,
-    );
+    assert.ok(tools.includes("sticker_respond_to_request"));
+    assert.ok(tools.includes("sticker_close_session"));
+    assert.ok(!tools.some((name) => /approve|execute/.test(name)));
     const input = {
       projectId: f.project.id,
       issueId: f.issue.id,
@@ -67,6 +64,21 @@ void test("official SDK session tools use authoritative API authorization, dedup
       sessionEventResultSchema,
     );
     assert.equal(retry.event.eventId, event.event.eventId);
+    assert.ok(event.request);
+    assert.equal(
+      (
+        await client.callTool({
+          name: "sticker_respond_to_request",
+          arguments: {
+            requestId: event.request.id,
+            revision: 1,
+            operationId: "00000000-0000-4000-8000-000000000001",
+            body: "cannot impersonate owner",
+          },
+        })
+      ).isError,
+      true,
+    );
     const detail = content(
       await client.callTool({
         name: "sticker_get_session",

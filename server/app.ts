@@ -119,6 +119,13 @@ export function createApp(config: AppConfig) {
   });
   app.use("/api", express.json({ limit: "512kb" }));
   app.post("/api/session", (req, res) => {
+    // Explicit MCP modes consume existing authority; browser login is unmarked.
+    if (req.headers["x-sticker-auth-mode"] !== undefined)
+      throw new DomainError(
+        401,
+        "UNAUTHENTICATED",
+        "이 인증 방식에서는 기존 자격증명이 필요합니다.",
+      );
     if (!req.is("application/json"))
       throw new DomainError(415, "CONTENT_TYPE", "JSON 요청이 필요합니다.");
     if (req.headers.origin && !validOrigin(req.headers.origin))
@@ -145,10 +152,32 @@ export function createApp(config: AppConfig) {
     });
   });
   app.use("/api", (req, res, next) => {
-    const principal =
-      localPolicy && req.headers.authorization === undefined
-        ? { ...localOwnerActor }
-        : auth.authenticate(req.headers.authorization, req.headers.cookie);
+    // This header constrains authentication; it never grants a role. Unmarked
+    // browser/legacy requests preserve the existing deployment policy.
+    const expected = req.headers["x-sticker-auth-mode"];
+    const modeHeaders = req.rawHeaders.filter(
+      (_, index) =>
+        index % 2 === 0 &&
+        req.rawHeaders[index].toLowerCase() === "x-sticker-auth-mode",
+    );
+    const mismatch =
+      modeHeaders.length > 1 ||
+      (expected !== undefined &&
+        !["agent", "trusted-local-owner", "owner-session"].includes(
+          String(expected),
+        )) ||
+      (expected === "trusted-local-owner" &&
+        (!localPolicy || req.headers.authorization !== undefined)) ||
+      (expected === "owner-session" &&
+        (Boolean(localPolicy) || req.headers.authorization !== undefined)) ||
+      (expected === "agent" && req.headers.authorization === undefined);
+    const principal = mismatch
+      ? null
+      : expected === "owner-session"
+        ? auth.authenticate(undefined, req.headers.cookie)
+        : localPolicy && req.headers.authorization === undefined
+          ? { ...localOwnerActor }
+          : auth.authenticate(req.headers.authorization, req.headers.cookie);
     if (!principal)
       return res
         .status(401)
