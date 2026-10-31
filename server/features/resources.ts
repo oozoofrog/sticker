@@ -78,6 +78,7 @@ export class ResourceService {
         "RESOURCE_KIND",
         "파일 자료만 교체할 수 있습니다.",
       );
+    return resource;
   }
   private header(actor: Actor, id: string): Resource {
     const row = this.ctx.db

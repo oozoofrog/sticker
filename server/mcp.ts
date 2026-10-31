@@ -1,3 +1,4 @@
+import { registerTransferTools } from "./mcp/transfers.js";
 import { registerLifecycleTools } from "./mcp/lifecycle.js";
 import { registerSettingsTools } from "./mcp/settings.js";
 import { STATUSES } from "./types.js";
@@ -162,6 +163,17 @@ export function createStickerMcp(
   registerCapabilityTools(featureClient, transport);
   registerLifecycleTools(featureClient);
   registerSettingsTools(featureClient, transport);
+  const transfers = registerTransferTools(featureClient, transport);
+  const close = server.close.bind(server),
+    priorOnClose = server.server.onclose;
+  server.close = async () => {
+    await transfers.dispose();
+    await close();
+  };
+  server.server.onclose = () => {
+    priorOnClose?.();
+    void transfers.dispose();
+  };
   const e = encodeURIComponent;
   tool(
     "sticker_create_project",
@@ -396,6 +408,19 @@ if (
   try {
     const server = createStickerMcp(mcpOptionsFromEnvironment(process.env));
     await server.connect(new StdioServerTransport());
+    let closing: Promise<void> | undefined;
+    const stop = () => {
+      closing ??= server.close().finally(() => {
+        process.stdin.off("end", stop);
+        process.off("SIGTERM", stop);
+      });
+      void closing.catch(() => {
+        process.exitCode = 1;
+      });
+    };
+    process.stdin.once("end", stop);
+    process.once("SIGTERM", stop);
+    if (process.stdin.readableEnded) stop();
   } catch (error) {
     process.stderr.write(
       `Sticker MCP: ${error instanceof Error ? error.message : "startup failed"}\n`,

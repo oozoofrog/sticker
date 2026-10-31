@@ -31,10 +31,6 @@ export const MCP_ROUTE_EXCEPTIONS = [
     reason:
       "SPA presentation transport; product actions are covered individually.",
   },
-  {
-    route: "POST /api/resources/:id/files",
-    reason: "Pending Task4 full-size file replacement.",
-  },
   ...[
     "GET /api/projects/:id/github/sources",
     "POST /api/projects/:id/github/repositories",
@@ -54,13 +50,8 @@ export const MCP_ROUTE_EXCEPTIONS = [
       "Pending Task3 typed GitHub/provider adapter; no claim of parity yet.",
   })),
 ] as const;
-/** These shipped routes remain byte-limited until Task4; mapped does not mean complete parity. */
-export const MCP_PARTIAL_FILE_ROUTES = [
-  "POST /api/issues/:id/attachments",
-  "GET /api/attachments/:id/file",
-  "POST /api/projects/:id/resources/files",
-  "GET /api/resources/:id/versions/:version/file",
-] as const;
+/** Chunked file tools cover the full HTTP file budget; legacy one-message tools retain their limits. */
+export const MCP_PARTIAL_FILE_ROUTES: readonly string[] = [];
 export function routeCoverage(route: string) {
   const key = normalizedRoute(route);
   const tools = MCP_CATALOGUE.filter((entry) =>

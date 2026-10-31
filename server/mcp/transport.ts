@@ -1,3 +1,4 @@
+import { trackedMultipart } from "./multipart-body.js";
 import { AsyncLocalStorage } from "node:async_hooks";
 import type { McpCatalogueEntry } from "./catalogue.js";
 import type { CallToolResult } from "@modelcontextprotocol/sdk/types.js";
@@ -17,6 +18,49 @@ import {
 } from "../contracts/system-status.js";
 import { actorSchema, apiErrorSchema } from "../response-schemas.js";
 
+export interface TransferRequestOptions {
+  signal?: AbortSignal;
+  range?: { start: number; end: number };
+  jsonLimit?: number;
+  onDispatch?: () => void;
+  trackFormData?: true;
+}
+/** Copies only bounded bytes; cancellation/reader cleanup settles before ownership returns. */
+async function readBoundedResponseJson(
+  response: Response,
+  limit: number,
+): Promise<unknown> {
+  if (!Number.isSafeInteger(limit) || limit < 1 || limit > 1024 * 1024)
+    throw new Error("Invalid bounded JSON limit");
+  const buffer = Buffer.alloc(limit),
+    reader = response.body?.getReader();
+  let size = 0,
+    done = false;
+  try {
+    if (reader)
+      for (;;) {
+        const chunk = await reader.read();
+        if (chunk.done) {
+          done = true;
+          break;
+        }
+        if (chunk.value.byteLength > limit - size)
+          throw new Error("Response exceeds bounded JSON limit");
+        buffer.set(chunk.value, size);
+        size += chunk.value.byteLength;
+      }
+    return JSON.parse(
+      new TextDecoder("utf-8", { fatal: true }).decode(
+        buffer.subarray(0, size),
+      ),
+    ) as unknown;
+  } finally {
+    if (reader) {
+      if (!done) await reader.cancel().catch(() => undefined);
+      reader.releaseLock();
+    }
+  }
+}
 export type McpAuthentication =
   | { mode: "agent"; token: string }
   | { mode: "trusted-local-owner" }
@@ -210,6 +254,13 @@ export function createStickerTransport(options: StickerMcpOptions) {
     const mutated = action
       ? action.mutationDispatched
       : !["GET", "HEAD", "OPTIONS"].includes(method);
+    if (!mutated && action?.entry.effect === "local")
+      return {
+        phase: "before_dispatch",
+        retryable: false,
+        retry: "readback",
+        readback: action.entry.readback,
+      };
     if (!mutated)
       return action?.entry.effect === "write"
         ? {
@@ -227,6 +278,7 @@ export function createStickerTransport(options: StickerMcpOptions) {
             retry: "same_key_same_payload" as const,
             retryKeyFields: action.retryKeyFields,
             retryInstruction:
+              action.entry.retryInstruction ??
               "Retry only with the same listed key fields and identical complete original input. Do not generate a new key or change payload/revision; read current state separately after replay.",
           }
         : { retryable: false, retry: "readback" as const }),
@@ -273,7 +325,9 @@ export function createStickerTransport(options: StickerMcpOptions) {
     credentials: CredentialHeaders,
     domainRequest = false,
     probe?: "health" | "readiness",
+    options?: TransferRequestOptions,
   ): Promise<Response> {
+    options?.signal?.throwIfAborted();
     if (
       !(probe
         ? method === "GET" &&
@@ -294,13 +348,20 @@ export function createStickerTransport(options: StickerMcpOptions) {
         .reduce((text, secret) => text.replaceAll(secret, "[redacted]"), value)
         .slice(0, 500);
     let response: Response;
+    const multipart =
+      body instanceof FormData && options?.trackFormData
+        ? trackedMultipart(body)
+        : undefined;
     const serializedBody =
-      body instanceof FormData
+      multipart?.body ??
+      (body instanceof FormData
         ? body
         : body === undefined
           ? undefined
-          : JSON.stringify(body);
+          : JSON.stringify(body));
+    let requesting = false;
     try {
+      if (domainRequest) options?.onDispatch?.();
       const action = actions.getStore();
       if (
         domainRequest &&
@@ -308,19 +369,33 @@ export function createStickerTransport(options: StickerMcpOptions) {
         !["GET", "HEAD", "OPTIONS"].includes(method)
       )
         action.mutationDispatched = true;
+      requesting = true;
       response = await fetch(`${origin}${path}`, {
         method,
         headers: {
           ...credentials,
-          ...(body instanceof FormData || body === undefined
-            ? {}
-            : { "content-type": "application/json" }),
+          ...(options?.range
+            ? {
+                range: `bytes=${String(options.range.start)}-${String(options.range.end)}`,
+                "accept-encoding": "identity",
+              }
+            : {}),
+          ...(multipart
+            ? { "content-type": multipart.contentType }
+            : body instanceof FormData || body === undefined
+              ? {}
+              : { "content-type": "application/json" }),
         },
         body: serializedBody,
-        signal: AbortSignal.timeout(15_000),
+        ...(multipart ? { duplex: "half" as const } : {}),
+        signal: options?.signal
+          ? AbortSignal.any([options.signal, AbortSignal.timeout(15_000)])
+          : AbortSignal.timeout(15_000),
         redirect: "error",
       });
-    } catch {
+    } catch (error) {
+      await multipart?.dispose();
+      if (!requesting) throw error;
       throw new ApiError(
         503,
         "api_unavailable",
@@ -331,6 +406,7 @@ export function createStickerTransport(options: StickerMcpOptions) {
         recovery(method),
       );
     }
+    await multipart?.dispose();
     if (probe === "readiness" && response.status === 503) {
       const raw: unknown = await response
         .clone()
@@ -345,7 +421,9 @@ export function createStickerTransport(options: StickerMcpOptions) {
         return response;
     }
     if (!response.ok) {
-      const raw: unknown = await response.json().catch(() => null),
+      const raw: unknown = await (
+          options ? readBoundedResponseJson(response, 65536) : response.json()
+        ).catch(() => null),
         parsed = apiErrorSchema.safeParse(raw),
         error = parsed.success ? parsed.data : {};
       throw new ApiError(
@@ -378,17 +456,40 @@ export function createStickerTransport(options: StickerMcpOptions) {
     if (domainRequest && action) action.domainResponseReceived = true;
     return response;
   }
-  async function verifiedActorWith(credentials: CredentialHeaders) {
+  async function decodeJson(response: Response, limit: number, method = "GET") {
+    try {
+      return await readBoundedResponseJson(response, limit);
+    } catch {
+      throw new ApiError(
+        502,
+        "api_response_invalid",
+        "API 응답을 제한된 크기 안에서 확인하지 못했습니다.",
+        undefined,
+        undefined,
+        undefined,
+        recovery(method),
+      );
+    }
+  }
+  async function verifiedActorWith(
+    credentials: CredentialHeaders,
+    options?: TransferRequestOptions,
+  ) {
     if (auth.mode !== "agent") {
       const response = await send(
         "/api/access-mode",
         "GET",
         undefined,
         credentials,
+        false,
+        undefined,
+        options,
       );
       const mode = z
         .object({ mode: z.enum(["password", "trusted-loopback"]) })
-        .parse(await response.json()).mode;
+        .parse(
+          options ? await decodeJson(response, 8192) : await response.json(),
+        ).mode;
       if (
         mode !==
         (auth.mode === "owner-session" ? "password" : "trusted-loopback")
@@ -399,10 +500,37 @@ export function createStickerTransport(options: StickerMcpOptions) {
           "선택한 소유자 인증 방식이 서버와 일치하지 않습니다.",
         );
     }
-    const response = await send("/api/session", "GET", undefined, credentials);
-    const actor = z
-      .object({ actor: actorSchema })
-      .parse(await response.json()).actor;
+    const response = await send(
+      "/api/session",
+      "GET",
+      undefined,
+      credentials,
+      false,
+      undefined,
+      options,
+    );
+    const raw: unknown = options
+      ? await decodeJson(response, 1024 * 1024)
+      : await response.json();
+    const actorContract = options
+      ? actorSchema.extend({
+          id: z.string().min(1).max(80),
+          name: z.string().min(1).max(80),
+          projectIds: z.array(z.string().min(1).max(100)).max(1000).nullable(),
+        })
+      : actorSchema;
+    const parsedActor = z.object({ actor: actorContract }).safeParse(raw);
+    if (!parsedActor.success)
+      throw new ApiError(
+        502,
+        "api_response_invalid",
+        "인증 주체 응답 형식을 확인하지 못했습니다.",
+        undefined,
+        undefined,
+        undefined,
+        recovery(),
+      );
+    const actor = parsedActor.data.actor;
     if (
       actor.role !== (auth.mode === "agent" ? "agent" : "owner") ||
       (auth.mode !== "agent" &&
@@ -415,8 +543,11 @@ export function createStickerTransport(options: StickerMcpOptions) {
       );
     return actor;
   }
-  async function verifiedActor() {
-    return verifiedActorWith(await headers());
+  async function verifiedActor(options?: TransferRequestOptions) {
+    options?.signal?.throwIfAborted();
+    const credentials = await headers();
+    options?.signal?.throwIfAborted();
+    return verifiedActorWith(credentials, options);
   }
   async function probeStatus(kind: "health" | "readiness") {
     const credentials = await headers();
@@ -448,10 +579,30 @@ export function createStickerTransport(options: StickerMcpOptions) {
     path: string,
     method = "GET",
     body?: unknown,
+    options?: TransferRequestOptions,
   ): Promise<Response> {
+    options?.signal?.throwIfAborted();
+    if (
+      options?.range &&
+      (!Number.isSafeInteger(options.range.start) ||
+        !Number.isSafeInteger(options.range.end) ||
+        options.range.start < 0 ||
+        options.range.end < options.range.start ||
+        method !== "GET")
+    )
+      throw new ApiError(400, "adapter_range", "파일 범위를 확인하세요.");
+    if (
+      options?.jsonLimit !== undefined &&
+      (!Number.isSafeInteger(options.jsonLimit) ||
+        options.jsonLimit < 1 ||
+        options.jsonLimit > 1024 * 1024)
+    )
+      throw new ApiError(400, "adapter_limit", "응답 크기 제한을 확인하세요.");
     const credentials = await headers();
-    if (auth.mode !== "agent") await verifiedActorWith(credentials);
-    return send(path, method, body, credentials, true);
+    options?.signal?.throwIfAborted();
+    if (auth.mode !== "agent") await verifiedActorWith(credentials, options);
+    options?.signal?.throwIfAborted();
+    return send(path, method, body, credentials, true, undefined, options);
   }
   /** Only a completed no-content DELETE establishes the legacy removal contract. */
   async function deleteNoContent(path: string, body?: unknown): Promise<void> {
@@ -473,10 +624,15 @@ export function createStickerTransport(options: StickerMcpOptions) {
     path: string,
     method = "GET",
     body?: unknown,
+    options?: TransferRequestOptions,
   ): Promise<unknown> {
-    const response = await request(path, method, body);
+    const response = await request(path, method, body, options);
     try {
-      return response.status === 204 ? { ok: true } : await response.json();
+      return response.status === 204
+        ? { ok: true }
+        : options
+          ? await decodeJson(response, options.jsonLimit ?? 8192, method)
+          : await response.json();
     } catch {
       throw new ApiError(
         502,
@@ -505,7 +661,14 @@ export function createStickerTransport(options: StickerMcpOptions) {
         afterResponse ? recovery() : { phase: "before_dispatch" },
       );
     }
-    if (error instanceof ApiError)
+    if (error instanceof ApiError) {
+      const details =
+        error.details ??
+        (action?.mutationDispatched &&
+        ((error.status >= 500 && error.code !== "MAINTENANCE") ||
+          error.code === "TRANSFER_CANCELED")
+          ? recovery()
+          : undefined);
       return {
         ...result({
           error: scrub(error.message),
@@ -516,13 +679,12 @@ export function createStickerTransport(options: StickerMcpOptions) {
           ...(error.retryAfterSeconds
             ? { retryAfterSeconds: error.retryAfterSeconds }
             : {}),
-          ...error.details,
-          ...(error.details?.outcome === "uncertain" && readback
-            ? { readback }
-            : {}),
+          ...details,
+          ...(details?.outcome === "uncertain" && readback ? { readback } : {}),
         }),
         isError: true,
       };
+    }
     return {
       ...result({
         error: "요청을 처리하지 못했습니다.",

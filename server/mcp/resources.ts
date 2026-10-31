@@ -175,7 +175,7 @@ export function registerResourceTools({
         fail(
           413,
           "FILE_TOO_LARGE",
-          "MCP 파일 읽기는 5 MiB까지 지원합니다. 웹에서 다운로드하세요.",
+          "이 도구는5 MiB까지 읽습니다. 큰 파일은 sticker_begin_file_read와 sticker_read_file_chunk를 사용하세요.",
         );
       const response = await request(
         `/api/resources/${e(resourceId)}/versions/${String(resourceVersion)}/file`,

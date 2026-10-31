@@ -13,8 +13,12 @@ import { createStickerMcp } from "../server/mcp.js";
 import { sessionOwner as owner } from "./session-fixture.js";
 export async function ordinaryMcpFixture(
   ownerMode: "owner-session" | "trusted-local-owner" = "owner-session",
+  artifactRoot?: string,
 ) {
-  const dir = mkdtempSync(join(tmpdir(), "sticker-mcp-ordinary-"));
+  if (artifactRoot) mkdirSync(artifactRoot, { recursive: true });
+  const dir = mkdtempSync(
+    join(artifactRoot ?? tmpdir(), "sticker-mcp-ordinary-"),
+  );
   const clientDir = join(dir, "synthetic-client");
   mkdirSync(clientDir);
   writeFileSync(

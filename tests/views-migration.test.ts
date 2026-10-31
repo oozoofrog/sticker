@@ -44,7 +44,7 @@ void test("v4 restores read-only, preserves existing issue/release metadata and 
     favoriteIds: [view.id],
   });
   store.close();
-  assert.equal(validateBackup(dir).schemaVersion, 9);
+  assert.equal(validateBackup(dir).schemaVersion, 10);
   store = new Store(dir);
   try {
     assert.equal(

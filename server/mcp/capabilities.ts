@@ -78,6 +78,13 @@ export function registerCapabilityTools(
       limits: {
         legacyFileBytes: 5 * 1024 * 1024,
         httpFileBytes: 20 * 1024 * 1024,
+        chunkedFileBytes: 20 * 1024 * 1024,
+        chunkBytes: 64 * 1024,
+        liveTransferHandles: 2,
+        transferRawReservationBytes: 40 * 1024 * 1024,
+        transferOwnedAllocationBytes: 80 * 1024 * 1024,
+        transferSlidingTtlMs: 10 * 60 * 1000,
+        transferAbsoluteTtlMs: 30 * 60 * 1000,
         requestTimeoutMs: 15_000,
         automaticRetry: false,
       },

@@ -1,3 +1,14 @@
+import { attachmentFileReceipt } from "./file-transfer-receipts.js";
+import { attachmentOperationStatusSchema } from "./contracts/file-transfers.js";
+import type { StoredFile } from "./file-storage.js";
+import {
+  attachmentPayloadHash,
+  boundedAttachmentJson,
+} from "./attachment-operations.js";
+import {
+  attachmentOperationPayloadSchema,
+  attachmentOperationReceiptSchema,
+} from "./contracts/attachment-operations.js";
 import { HistoryService } from "./features/history.js";
 import type { IssueMutationMetadata } from "./store-context.js";
 import type { IssueFieldPatch } from "./contracts/history.js";
@@ -772,28 +783,161 @@ export class Store {
       );
     });
   }
+  authorizeAttachmentWrite(actor: Actor, issueId: string) {
+    this.write(actor);
+    return this.writableIssue(actor, issueId);
+  }
+  private insertAttachment(
+    actor: Actor,
+    issueId: string,
+    data: z.infer<typeof attachmentSchema>,
+  ): Attachment {
+    const a: Attachment = {
+      id: randomUUID(),
+      issueId,
+      kind: data.kind,
+      name: data.name,
+      url: data.kind === "link" ? data.url : null,
+      storageKey: data.kind === "file" ? data.storageKey : null,
+      mimeType: data.kind === "file" ? data.mimeType : null,
+      size: data.kind === "file" ? data.size : 0,
+      authorId: actor.id,
+      authorName: actor.name,
+      createdAt: now(),
+    };
+    this.insert("attachments", { ...a });
+    this.activity(actor, issueId, "attachment_added", `자료 추가: ${a.name}`);
+    return a;
+  }
   addAttachment(actor: Actor, issueId: string, input: unknown): Attachment {
     this.write(actor);
     const data = parse(attachmentSchema, input);
     return this.tx(() => {
-      this.writableIssue(actor, issueId);
-      const a: Attachment = {
-        id: randomUUID(),
-        issueId,
-        kind: data.kind,
-        name: data.name,
-        url: data.kind === "link" ? data.url : null,
-        storageKey: data.kind === "file" ? data.storageKey : null,
-        mimeType: data.kind === "file" ? data.mimeType : null,
-        size: data.kind === "file" ? data.size : 0,
-        authorId: actor.id,
-        authorName: actor.name,
-        createdAt: now(),
-      };
-      this.insert("attachments", { ...a });
-      this.activity(actor, issueId, "attachment_added", `자료 추가: ${a.name}`);
-      return a;
+      this.authorizeAttachmentWrite(actor, issueId);
+      return this.insertAttachment(actor, issueId, data);
     });
+  }
+  addFileAttachment(
+    actor: Actor,
+    issueId: string,
+    file: StoredFile,
+    operationId?: string,
+  ): Attachment {
+    const payload = attachmentOperationPayloadSchema.parse({
+      contractVersion: 1,
+      kind: "issue_file_create",
+      issueId,
+      file: {
+        fileName: file.fileName,
+        mimeType: file.mimeType,
+        size: file.size,
+        checksum: file.checksum,
+      },
+    });
+    const data = parse(attachmentSchema, {
+      kind: "file",
+      name: file.fileName,
+      storageKey: file.storageKey,
+      mimeType: file.mimeType,
+      size: file.size,
+    });
+    if (operationId !== undefined) z.uuid().parse(operationId);
+    return this.tx(() => {
+      const issue = this.authorizeAttachmentWrite(actor, issueId);
+      const hash = attachmentPayloadHash(payload);
+      if (operationId) {
+        const previous = this.db
+          .prepare(
+            "SELECT projectId,payloadHash,result FROM attachment_operations WHERE actorId=? AND kind='issue_file_create' AND operationId=?",
+          )
+          .get(actor.id, operationId);
+        if (previous) {
+          if (
+            previous.projectId !== issue.projectId ||
+            previous.payloadHash !== hash
+          )
+            throw new DomainError(
+              409,
+              "OPERATION_CONFLICT",
+              "같은 작업 식별자의 입력이 다릅니다.",
+            );
+          const raw: unknown = boundedAttachmentJson(previous.result);
+          return attachmentOperationReceiptSchema.parse(raw);
+        }
+      }
+      const receipt = attachmentOperationReceiptSchema.parse(
+        this.insertAttachment(actor, issueId, data),
+      );
+      if (operationId)
+        this.db
+          .prepare(
+            "INSERT INTO attachment_operations VALUES (?,'issue_file_create',?,?,?,?,?,?,?,?)",
+          )
+          .run(
+            actor.id,
+            operationId,
+            issue.projectId,
+            issueId,
+            receipt.id,
+            canonicalJson(payload),
+            hash,
+            JSON.stringify(receipt),
+            receipt.createdAt,
+          );
+      return receipt;
+    });
+  }
+  attachmentFileScope(actor: Actor, attachmentId: string) {
+    const attachment = this.getAttachment(actor, attachmentId),
+      projectId = this.issue(actor, attachment.issueId).projectId;
+    const operation = this.db
+      .prepare(
+        "SELECT payload FROM attachment_operations WHERE attachmentId=? LIMIT 1",
+      )
+      .get(attachmentId);
+    const raw: unknown = operation
+      ? boundedAttachmentJson(operation.payload)
+      : null;
+    return {
+      attachment,
+      projectId,
+      expectedChecksum:
+        raw === null
+          ? null
+          : attachmentOperationPayloadSchema.parse(raw).file.checksum,
+    };
+  }
+  getAttachmentOperation(actor: Actor, projectId: string, operationId: string) {
+    this.project(actor, projectId);
+    z.uuid().parse(operationId);
+    const row = this.db
+      .prepare(
+        "SELECT payload,result FROM attachment_operations WHERE actorId=? AND kind='issue_file_create' AND projectId=? AND operationId=?",
+      )
+      .get(actor.id, projectId, operationId);
+    if (!row) return { status: { recorded: false as const }, storageKey: null };
+    const rawPayload: unknown = boundedAttachmentJson(row.payload),
+      rawReceipt: unknown = boundedAttachmentJson(row.result);
+    const payload = attachmentOperationPayloadSchema.parse(rawPayload),
+      receipt = attachmentOperationReceiptSchema.parse(rawReceipt),
+      current = this.db
+        .prepare("SELECT id FROM attachments WHERE id=?")
+        .get(receipt.id);
+    return {
+      storageKey: receipt.storageKey,
+      status: attachmentOperationStatusSchema.parse({
+        recorded: true,
+        operationId,
+        payload,
+        receipt: attachmentFileReceipt(
+          receipt,
+          projectId,
+          operationId,
+          payload.file.checksum,
+          Boolean(current),
+        ),
+      }),
+    };
   }
   getAttachment(actor: Actor, attachmentId: string): Attachment {
     const a = attachmentResponseSchema.parse(

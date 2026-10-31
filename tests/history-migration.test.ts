@@ -76,7 +76,7 @@ void test("real v8 upgrades to v9 without invented prior values and preserves co
   };
   const restored = store.history.restore(owner, "i", input);
   store.close();
-  assert.equal(validateBackup(f.dir).schemaVersion, 9);
+  assert.equal(validateBackup(f.dir).schemaVersion, 10);
   const copy = join(f.dir, "restored");
   mkdirSync(copy);
   cpSync(f.path, join(copy, "sticker.sqlite"));
@@ -140,7 +140,7 @@ void test("v9 backup validates strict historical values and restore receipts, no
     operationId: randomUUID(),
   });
   store.close();
-  assert.equal(validateBackup(f.dir).schemaVersion, 9);
+  assert.equal(validateBackup(f.dir).schemaVersion, 10);
   const db = new DatabaseSync(f.path);
   db.prepare(
     "UPDATE issue_field_changes SET beforeJson=? WHERE changeId=?",
