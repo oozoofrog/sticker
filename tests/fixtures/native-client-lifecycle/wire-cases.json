@@ -1551,5 +1551,67 @@
         "verificationExpectation": "initialize_tools_and_safe_read"
       }
     }
+  },
+  {
+    "name": "cancellation-unconfirmed-is-explicit",
+    "kind": "response",
+    "valid": true,
+    "value": {
+      "version": 1,
+      "requestId": "cancel",
+      "error": {
+        "code": "cancellation_unconfirmed"
+      }
+    }
+  },
+  {
+    "name": "cancel-acceptance-is-not-terminal-proof",
+    "kind": "response",
+    "valid": false,
+    "value": {
+      "version": 1,
+      "requestId": "cancel",
+      "method": "cancelPlan",
+      "result": {
+        "canceled": true,
+        "phase": "rolled_back"
+      }
+    }
+  },
+  {
+    "name": "cancel-false-is-not-unknown-proof",
+    "kind": "response",
+    "valid": false,
+    "value": {
+      "version": 1,
+      "requestId": "cancel",
+      "method": "cancelPlan",
+      "result": {
+        "canceled": false
+      }
+    }
+  },
+  {
+    "name": "accepted-cancel-can-have-pending-cleanup",
+    "kind": "response",
+    "valid": true,
+    "value": {
+      "version": 1,
+      "requestId": "operation",
+      "method": "getOperation",
+      "result": {
+        "kind": "operation",
+        "operationId": "operation-one",
+        "clientId": "codex-local",
+        "action": "connect",
+        "phase": "cleanup_pending",
+        "cleanup": {
+          "configCompensation": "pending",
+          "newGrantCleanup": "pending",
+          "secretCleanup": "retained"
+        },
+        "checkedAt": "2026-10-31T12:00:00Z"
+      }
+    }
   }
 ]

@@ -22,6 +22,7 @@ enum LifecycleFailure: String, Error, Codable {
     case invalidInput = "invalid_input", messageTooLarge = "message_too_large", ownedConflict = "owned_conflict"
     case writerUnavailable = "writer_unavailable", operationConflict = "operation_conflict", permissionRequired = "permission_required"
     case planExpired = "plan_expired", planCapacity = "plan_capacity", unsafeStorage = "unsafe_storage", invalidStorage = "invalid_storage"
+    case cancellationUnconfirmed = "cancellation_unconfirmed"
     case projectRequired = "project_required", unsupportedProfile = "unsupported_profile", configTooLarge = "config_too_large", configAmbiguous = "config_ambiguous"
 }
 enum OperationPhase: String, Codable {

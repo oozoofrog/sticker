@@ -82,6 +82,7 @@ const errorCode = z.enum([
   "plan_capacity",
   "unsafe_storage",
   "invalid_storage",
+  "cancellation_unconfirmed",
   "project_required",
   "unsupported_profile",
   "config_too_large",
@@ -335,6 +336,7 @@ export const nativeLifecycleResponseSchema = z.union([
       .object({
         ...base,
         method: z.literal("cancelPlan"),
+        // Durable plan-admission fence accepted; getOperation owns cleanup status.
         result: z.object({ canceled: z.literal(true) }).strict(),
       })
       .strict(),
