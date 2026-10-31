@@ -12,12 +12,13 @@ export interface McpCatalogueEntry {
     | "exact-operation"
     | "conditional-operation"
     | "event-id";
-  effect: "read" | "write";
+  effect: "read" | "write" | "local";
   conditions: readonly string[];
   readback?: string;
   destructive?: boolean;
   externalEffect?: "conditional_github_issue_create";
   authenticationMode?: "owner-session";
+  retryInstruction?: string;
 }
 type EntryOptions = Partial<
   Pick<
@@ -29,13 +30,14 @@ type EntryOptions = Partial<
     | "retry"
     | "externalEffect"
     | "authenticationMode"
+    | "retryInstruction"
     | "confirm"
   >
 >;
 function entry(
   action: string,
   route: string[],
-  effect: "read" | "write",
+  effect: "read" | "write" | "local",
   options: EntryOptions = {},
 ): McpCatalogueEntry {
   return {
@@ -605,6 +607,147 @@ export const MCP_CATALOGUE: readonly McpCatalogueEntry[] = [
     destructive: true,
     confirm: "literal-true",
   }),
+
+  entry(
+    "begin_upload",
+    [
+      "GET /api/session",
+      "HEAD /api/issues/:issueId/attachments",
+      "HEAD /api/projects/:projectId/resources/files",
+      "HEAD /api/resources/:resourceId/files",
+    ],
+    "local",
+    {
+      authority: "writer",
+      readback: "sticker_list_file_transfers",
+      conditions: [
+        "current_target_write_authority",
+        "20MiB_file",
+        "2_handles_40MiB_reservations_80MiB_owned_budget",
+        "no_domain_commit",
+      ],
+    },
+  ),
+  entry(
+    "write_upload_chunk",
+    [
+      "GET /api/session",
+      "HEAD /api/issues/:issueId/attachments",
+      "HEAD /api/projects/:projectId/resources/files",
+      "HEAD /api/resources/:resourceId/files",
+    ],
+    "local",
+    {
+      authority: "writer",
+      readback: "sticker_list_file_transfers",
+      conditions: [
+        "creator_identity",
+        "current_target_write_authority",
+        "ordered_canonical_64KiB_chunks",
+        "no_domain_commit",
+      ],
+    },
+  ),
+  entry(
+    "finish_upload",
+    [
+      "POST /api/issues/:issueId/attachments",
+      "POST /api/projects/:projectId/resources/files",
+      "POST /api/resources/:resourceId/files",
+    ],
+    "write",
+    {
+      authority: "writer",
+      retry: "exact-operation",
+      readback: "sticker_list_file_transfers",
+      retryInstruction:
+        "Retry only with the same operationId and identical original target, metadata, revision, checksum and file bytes. Never generate a new key. After adapter restart begin a new local handle with that same durable operation contract, then read current state separately.",
+      conditions: [
+        "creator_identity",
+        "current_write_authority",
+        "original_revision_when_resource_replacement",
+        "pinned_whole_checksum",
+        "single_dispatch_per_explicit_finish",
+        "historical_committed_receipt_is_not_current_file_presence",
+      ],
+    },
+  ),
+  entry("cancel_upload", ["GET /api/session"], "local", {
+    authority: "authenticated",
+    readback: "sticker_list_file_transfers",
+    conditions: [
+      "creator_identity",
+      "cleanup_pending_keeps_capacity",
+      "does_not_cancel_committed_domain_work",
+    ],
+  }),
+  entry(
+    "begin_file_read",
+    [
+      "GET /api/session",
+      "GET /api/attachments/:attachmentId/metadata",
+      "GET /api/resources/:resourceId/versions/:resourceVersion",
+      "HEAD /api/attachments/:attachmentId/file",
+      "HEAD /api/resources/:resourceId/versions/:resourceVersion/file",
+    ],
+    "local",
+    {
+      authority: "authenticated",
+      readback: "sticker_list_file_transfers",
+      conditions: [
+        "current_read_scope",
+        "explicit_immutable_resource_version",
+        "20MiB_file",
+        "shared_process_capacity",
+      ],
+    },
+  ),
+  entry(
+    "read_file_chunk",
+    [
+      "GET /api/session",
+      "HEAD /api/attachments/:attachmentId/file",
+      "GET /api/attachments/:attachmentId/file",
+      "HEAD /api/resources/:resourceId/versions/:resourceVersion/file",
+      "GET /api/resources/:resourceId/versions/:resourceVersion/file",
+    ],
+    "local",
+    {
+      authority: "authenticated",
+      readback: "sticker_list_file_transfers",
+      conditions: [
+        "creator_identity",
+        "current_read_scope_each_chunk",
+        "pinned_identity",
+        "exact_206_or_bounded_verified_200_fallback",
+        "64KiB_output",
+      ],
+    },
+  ),
+  entry("cancel_file_read", ["GET /api/session"], "local", {
+    authority: "authenticated",
+    readback: "sticker_list_file_transfers",
+    conditions: [
+      "creator_identity",
+      "reader_settlement_before_capacity_release",
+    ],
+  }),
+  entry("list_file_transfers", ["GET /api/session"], "read", {
+    conditions: ["creator_identity", "process_local_handles_only"],
+  }),
+  entry(
+    "get_attachment_operation",
+    ["GET /api/projects/:projectId/attachment-operations/:operationId"],
+    "read",
+    {
+      conditions: [
+        "project_scope",
+        "own_actor_operation_only",
+        "expected_original_target_name_size_checksum",
+        "missing_is_not_proof_of_no_future_commit",
+      ],
+    },
+  ),
 ];
 export function catalogueEntry(tool: string): McpCatalogueEntry {
   const value = MCP_CATALOGUE.find((entry) => entry.tool === tool);

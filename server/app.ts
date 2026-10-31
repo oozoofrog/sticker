@@ -1,3 +1,10 @@
+import { registerFileTransferRoutes } from "./routes/file-transfers.js";
+import {
+  attachmentFileReceipt,
+  wantsFileReceipt,
+  storedFilePresent,
+} from "./file-transfer-receipts.js";
+import { attachmentMultipartSchema } from "./contracts/attachment-operations.js";
 import { MaintenanceController } from "./maintenance.js";
 import { registerMaintenanceRoutes } from "./routes/maintenance.js";
 import {
@@ -13,7 +20,11 @@ import { registerGithubRoutes } from "./routes/github.js";
 import type { GithubProvider } from "./features/github.js";
 import { registerTemplateRoutes } from "./routes/templates.js";
 import { registerMcpSettingsRoutes } from "./routes/mcp-settings.js";
-import express, { type ErrorRequestHandler, type Request } from "express";
+import express, {
+  type ErrorRequestHandler,
+  type Request,
+  type RequestHandler,
+} from "express";
 import multer from "multer";
 import { mkdirSync, existsSync, unlinkSync } from "node:fs";
 import { resolve, join } from "node:path";
@@ -277,19 +288,25 @@ export function createApp(config: AppConfig) {
   );
   // Multer 2.5 forwards charset options to Busboy; decode ordinary browser filenames
   // as UTF-8 while letting filename* declarations choose their own charset.
+  registerFileTransferRoutes(app, store, files, maintenance);
   const uploadOptions: multer.Options & { defParamCharset: string } = {
     storage: multer.memoryStorage(),
     defParamCharset: "utf8",
-    limits: { fileSize: 20 * 1024 * 1024, files: 1, fields: 0, parts: 2 },
+    limits: {
+      fileSize: 20 * 1024 * 1024,
+      files: 1,
+      fields: 1,
+      fieldSize: 36,
+      fieldNameSize: 32,
+      parts: 3,
+    },
   };
   const upload = multer(uploadOptions).single("file");
   app.post(
     "/api/issues/:id/attachments",
     (req, _res, next) => {
-      const principal = actor(req);
-      store.getIssue(principal, identifier(req));
-      if (!principal.canWrite)
-        throw new DomainError(403, "READ_ONLY", "읽기 전용 접근 권한입니다.");
+      store.authorizeAttachmentWrite(actor(req), identifier(req));
+      wantsFileReceipt(req);
       next();
     },
     maintenance.trackMiddleware((req, res, next) =>
@@ -310,21 +327,55 @@ export function createApp(config: AppConfig) {
     (req, res) => {
       if (!req.file)
         throw new DomainError(400, "FILE_REQUIRED", "파일 하나를 선택하세요.");
-      const attachment = files.withUpload(
+      const parsed = attachmentMultipartSchema.safeParse(req.body);
+      if (!parsed.success)
+        throw new DomainError(
+          400,
+          "INVALID_INPUT",
+          "첨부 작업 식별자를 확인하세요.",
+        );
+      const projectId = store.authorizeAttachmentWrite(
+        actor(req),
+        identifier(req),
+      ).projectId;
+      const committed = files.withUpload(
         req.file.buffer,
         req.file.originalname,
         (file) => {
-          const value = store.addAttachment(actor(req), identifier(req), {
-            kind: "file",
-            name: file.fileName,
-            storageKey: file.storageKey,
-            mimeType: file.mimeType,
-            size: file.size,
-          });
-          return { storageKey: file.storageKey, value };
+          const value = store.addFileAttachment(
+            actor(req),
+            identifier(req),
+            file,
+            parsed.data.operationId,
+          );
+          return {
+            storageKey: value.storageKey ?? file.storageKey,
+            value: { attachment: value, checksum: file.checksum },
+          };
         },
       );
-      res.status(201).json(attachment);
+      const attachment = committed.attachment;
+      if (wantsFileReceipt(req)) {
+        let currentPresent = false;
+        try {
+          const current = store.getAttachment(actor(req), attachment.id);
+          currentPresent = storedFilePresent(files, current.storageKey);
+        } catch (error) {
+          if (!(error instanceof DomainError) || error.status !== 404)
+            throw error;
+        }
+        res
+          .status(201)
+          .json(
+            attachmentFileReceipt(
+              attachment,
+              projectId,
+              parsed.data.operationId ?? null,
+              committed.checksum,
+              currentPresent,
+            ),
+          );
+      } else res.status(201).json(attachment);
     },
   );
   function safePath(storageKey: string) {
@@ -347,7 +398,7 @@ export function createApp(config: AppConfig) {
         );
     }
   }
-  app.get("/api/attachments/:id/file", (req, res, next) => {
+  const attachmentDownload: RequestHandler = (req, res, next) => {
     const attachment = store.getAttachment(actor(req), identifier(req));
     if (attachment.kind !== "file" || !attachment.storageKey)
       throw new DomainError(404, "NOT_FOUND", "파일을 찾을 수 없습니다.");
@@ -375,7 +426,9 @@ export function createApp(config: AppConfig) {
     res.sendFile(path, (e) => {
       if (e) next(e);
     });
-  });
+  };
+  app.head("/api/attachments/:id/file", attachmentDownload);
+  app.get("/api/attachments/:id/file", attachmentDownload);
   app.delete("/api/attachments/:id", (req, res) => {
     const attachment = store.deleteAttachment(actor(req), identifier(req));
     if (attachment.storageKey) removeFile(attachment.storageKey);

@@ -1,3 +1,4 @@
+import { validateAttachmentOperations } from "./attachment-operations.js";
 import { validateHistory } from "./history-validation.js";
 import { validateResourceVersionFiles } from "./resource-files.js";
 import {
@@ -170,6 +171,7 @@ export function validateBackup(stageDir: string): {
       if (attachment.size !== size)
         throw new Error(`Attachment size mismatch for ${row.storageKey}.`);
     }
+    if (version >= 10) validateAttachmentOperations(root, db);
     const resourceFileCount =
       version >= 7 ? validateResourceVersionFiles(root, db) : 0;
     return {

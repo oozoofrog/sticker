@@ -1,3 +1,8 @@
+import {
+  resourceFileReceipt,
+  wantsFileReceipt,
+  storedFilePresent,
+} from "../file-transfer-receipts.js";
 import type { MaintenanceController } from "../maintenance.js";
 import type { Express, Request, RequestHandler } from "express";
 import multer from "multer";
@@ -5,7 +10,10 @@ import { z } from "zod";
 import { DomainError } from "../domain-error.js";
 import { FileStorage, type StoredFile } from "../file-storage.js";
 import type { ResourceService } from "../features/resources.js";
-import { resourceUploadInputSchema } from "../contracts/resources.js";
+import {
+  resourceUploadInputSchema,
+  resourcePatchInputSchema,
+} from "../contracts/resources.js";
 import { requestActor as actor, requestId as id } from "../http-context.js";
 function input<T>(schema: z.ZodType<T>, value: unknown): T {
   const parsed = schema.safeParse(value);
@@ -83,7 +91,7 @@ export function registerResourceRoutes(
       ),
     ),
   );
-  app.get("/api/resources/:id/versions/:version/file", (req, res, next) => {
+  const resourceDownload: RequestHandler = (req, res, next) => {
     const file = resources.fileRecord(
         actor(req),
         id(req),
@@ -94,7 +102,9 @@ export function registerResourceRoutes(
     res.sendFile(path, (error) => {
       if (error) next(error);
     });
-  });
+  };
+  app.head("/api/resources/:id/versions/:version/file", resourceDownload);
+  app.get("/api/resources/:id/versions/:version/file", resourceDownload);
   const options: multer.Options & { defParamCharset: string } = {
       storage: multer.memoryStorage(),
       defParamCharset: "utf8",
@@ -126,6 +136,7 @@ export function registerResourceRoutes(
     "/api/projects/:id/resources/files",
     (req, _res, next) => {
       resources.authorizeProjectWrite(actor(req), id(req));
+      wantsFileReceipt(req);
       next();
     },
     maintenance ? maintenance.trackMiddleware(receive) : receive,
@@ -155,20 +166,38 @@ export function registerResourceRoutes(
           };
         },
       );
-      res.status(201).json(value);
+      res
+        .status(201)
+        .json(
+          req.query.receipt === "1"
+            ? resourceFileReceipt(
+                value,
+                data.operationId,
+                storedFilePresent(
+                  files,
+                  resources.fileRecord(
+                    actor(req),
+                    value.resource.id,
+                    value.resource.currentVersion,
+                  ).storageKey,
+                ),
+              )
+            : value,
+        );
     },
   );
   app.post(
     "/api/resources/:id/files",
     (req, _res, next) => {
       resources.authorizeFileUpdate(actor(req), id(req));
+      wantsFileReceipt(req);
       next();
     },
     maintenance ? maintenance.trackMiddleware(receive) : receive,
     (req, res) => {
       if (!req.file)
         throw new DomainError(400, "FILE_REQUIRED", "파일 하나를 선택하세요.");
-      const data = metadata(req),
+      const data = input(resourcePatchInputSchema, metadata(req)),
         value = files.withUpload(
           req.file.buffer,
           req.file.originalname,
@@ -184,7 +213,22 @@ export function registerResourceRoutes(
             };
           },
         );
-      res.json(value);
+      res.json(
+        wantsFileReceipt(req)
+          ? resourceFileReceipt(
+              value,
+              data.operationId,
+              storedFilePresent(
+                files,
+                resources.fileRecord(
+                  actor(req),
+                  value.resource.id,
+                  value.resource.currentVersion,
+                ).storageKey,
+              ),
+            )
+          : value,
+      );
     },
   );
   app.get("/api/issues/:id/resources", (req, res) =>

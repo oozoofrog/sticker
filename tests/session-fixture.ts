@@ -78,6 +78,7 @@ export async function sessionHttpFixture(githubProvider?: GithubProvider) {
       body: body === undefined ? undefined : JSON.stringify(body),
     });
   return {
+    dir,
     instance,
     project,
     other,
