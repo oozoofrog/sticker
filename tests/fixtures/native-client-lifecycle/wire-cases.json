@@ -1,0 +1,1555 @@
+[
+  {
+    "name": "detect",
+    "kind": "request",
+    "valid": true,
+    "value": {
+      "version": 1,
+      "requestId": "request-1",
+      "method": "detectClients",
+      "refreshMetadata": false
+    }
+  },
+  {
+    "name": "plan",
+    "kind": "request",
+    "valid": true,
+    "value": {
+      "version": 1,
+      "requestId": "request-2",
+      "method": "planChange",
+      "clientId": "codex-local",
+      "action": "connect",
+      "expectedOwnershipRevision": 0
+    }
+  },
+  {
+    "name": "apply",
+    "kind": "request",
+    "valid": true,
+    "value": {
+      "version": 1,
+      "requestId": "request-3",
+      "method": "applyChange",
+      "planId": "plan-1",
+      "digest": "aaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaa",
+      "operationId": "operation-1"
+    }
+  },
+  {
+    "name": "operation",
+    "kind": "request",
+    "valid": true,
+    "value": {
+      "version": 1,
+      "requestId": "request-4",
+      "method": "getOperation",
+      "operationId": "operation-1"
+    }
+  },
+  {
+    "name": "verify",
+    "kind": "request",
+    "valid": true,
+    "value": {
+      "version": 1,
+      "requestId": "request-5",
+      "method": "verifyConnection",
+      "clientId": "codex-local",
+      "expectedOwnershipRevision": 1
+    }
+  },
+  {
+    "name": "rollback",
+    "kind": "request",
+    "valid": true,
+    "value": {
+      "version": 1,
+      "requestId": "request-6",
+      "method": "planRollback",
+      "appliedOperationId": "operation-1",
+      "expectedOwnershipRevision": 1
+    }
+  },
+  {
+    "name": "cancel",
+    "kind": "request",
+    "valid": true,
+    "value": {
+      "version": 1,
+      "requestId": "request-7",
+      "method": "cancelPlan",
+      "planId": "plan-1"
+    }
+  },
+  {
+    "name": "path is not client id",
+    "kind": "request",
+    "valid": false,
+    "value": {
+      "version": 1,
+      "requestId": "r",
+      "method": "planChange",
+      "clientId": "/tmp/codex",
+      "action": "connect",
+      "expectedOwnershipRevision": 0
+    }
+  },
+  {
+    "name": "caller cannot approve",
+    "kind": "request",
+    "valid": false,
+    "value": {
+      "version": 1,
+      "requestId": "r",
+      "method": "applyChange",
+      "planId": "p",
+      "digest": "aaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaa",
+      "operationId": "o",
+      "approved": true
+    }
+  },
+  {
+    "name": "no raw token input",
+    "kind": "request",
+    "valid": false,
+    "value": {
+      "version": 1,
+      "requestId": "r",
+      "method": "detectClients",
+      "refreshMetadata": false,
+      "token": "fixture-canary"
+    }
+  },
+  {
+    "name": "unexpected path",
+    "kind": "request",
+    "valid": false,
+    "value": {
+      "version": 1,
+      "requestId": "r",
+      "method": "detectClients",
+      "refreshMetadata": false,
+      "path": "/tmp/foreign"
+    }
+  },
+  {
+    "name": "negative revision",
+    "kind": "request",
+    "valid": false,
+    "value": {
+      "version": 1,
+      "requestId": "r",
+      "method": "verifyConnection",
+      "clientId": "codex-local",
+      "expectedOwnershipRevision": -1
+    }
+  },
+  {
+    "name": "future protocol",
+    "kind": "request",
+    "valid": false,
+    "value": {
+      "version": 2,
+      "requestId": "r",
+      "method": "detectClients",
+      "refreshMetadata": false
+    }
+  },
+  {
+    "name": "noninteger revision",
+    "kind": "request",
+    "valid": false,
+    "value": {
+      "version": 1,
+      "requestId": "r",
+      "method": "verifyConnection",
+      "clientId": "codex-local",
+      "expectedOwnershipRevision": 1.5
+    }
+  },
+  {
+    "name": "wrong method fields",
+    "kind": "request",
+    "valid": false,
+    "value": {
+      "version": 1,
+      "requestId": "r",
+      "method": "getOperation",
+      "operationId": "o",
+      "clientId": "codex-local"
+    }
+  },
+  {
+    "name": "safe first use",
+    "kind": "response",
+    "valid": true,
+    "value": {
+      "version": 1,
+      "requestId": "r",
+      "method": "detectClients",
+      "result": [
+        {
+          "clientId": "codex-local",
+          "displayName": "Codex",
+          "safeVersion": "0.166.0-alpha.5.1",
+          "availability": "writer_unavailable",
+          "registration": "unknown",
+          "ownershipRevision": 0,
+          "allowedActions": [],
+          "credentialState": "grant_required",
+          "protocolCheck": "not_checked",
+          "clientLoad": "unknown",
+          "checkedAt": "2026-10-31T12:00:00Z",
+          "reasonCodes": ["writer_not_certified"]
+        }
+      ]
+    }
+  },
+  {
+    "name": "nested secret response rejected",
+    "kind": "response",
+    "valid": false,
+    "value": {
+      "version": 1,
+      "requestId": "r",
+      "method": "detectClients",
+      "result": [
+        {
+          "clientId": "codex-local",
+          "displayName": "Codex",
+          "availability": "writer_unavailable",
+          "registration": "unknown",
+          "ownershipRevision": 0,
+          "allowedActions": [],
+          "credentialState": "grant_required",
+          "protocolCheck": "not_checked",
+          "clientLoad": "unknown",
+          "checkedAt": "2026-10-31T12:00:00Z",
+          "reasonCodes": [],
+          "tokenHash": "ffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffff"
+        }
+      ]
+    }
+  },
+  {
+    "name": "bounded cleanup result",
+    "kind": "response",
+    "valid": true,
+    "value": {
+      "version": 1,
+      "requestId": "r",
+      "method": "getOperation",
+      "result": {
+        "kind": "operation",
+        "operationId": "o",
+        "clientId": "codex-local",
+        "action": "connect",
+        "phase": "cleanup_pending",
+        "cleanup": {
+          "configCompensation": "conflict",
+          "newGrantCleanup": "pending",
+          "secretCleanup": "retained"
+        },
+        "checkedAt": "2026-10-31T12:00:00Z"
+      }
+    }
+  },
+  {
+    "name": "unknown cleanup receipt rejected",
+    "kind": "response",
+    "valid": false,
+    "value": {
+      "version": 1,
+      "requestId": "r",
+      "method": "getOperation",
+      "result": {
+        "kind": "operation",
+        "operationId": "o",
+        "clientId": "codex-local",
+        "action": "connect",
+        "phase": "cleanup_pending",
+        "cleanup": {
+          "configCompensation": "force_overwrite",
+          "newGrantCleanup": "pending",
+          "secretCleanup": "retained"
+        },
+        "checkedAt": "2026-10-31T12:00:00Z"
+      }
+    }
+  },
+  {
+    "name": "blocked plan",
+    "kind": "response",
+    "valid": true,
+    "value": {
+      "version": 1,
+      "requestId": "r",
+      "method": "planChange",
+      "result": {
+        "kind": "unavailable",
+        "reason": "writer_unavailable"
+      }
+    }
+  },
+  {
+    "name": "canceled",
+    "kind": "response",
+    "valid": true,
+    "value": {
+      "version": 1,
+      "requestId": "r",
+      "method": "cancelPlan",
+      "result": {
+        "canceled": true
+      }
+    }
+  },
+  {
+    "name": "safe error",
+    "kind": "response",
+    "valid": true,
+    "value": {
+      "version": 1,
+      "requestId": "r",
+      "error": {
+        "code": "owned_conflict"
+      }
+    }
+  },
+  {
+    "name": "timestamp checkedAt impossible February day",
+    "kind": "response",
+    "valid": false,
+    "value": {
+      "version": 1,
+      "requestId": "r",
+      "method": "detectClients",
+      "result": [
+        {
+          "clientId": "codex-local",
+          "displayName": "Codex",
+          "safeVersion": "0.166.0-alpha.5.1",
+          "availability": "writer_unavailable",
+          "registration": "unknown",
+          "ownershipRevision": 0,
+          "allowedActions": [],
+          "credentialState": "grant_required",
+          "protocolCheck": "not_checked",
+          "clientLoad": "unknown",
+          "checkedAt": "2026-02-30T12:00:00Z",
+          "reasonCodes": ["writer_not_certified"]
+        }
+      ]
+    }
+  },
+  {
+    "name": "timestamp expiresAt impossible February day",
+    "kind": "response",
+    "valid": false,
+    "value": {
+      "version": 1,
+      "requestId": "timestamp-plan",
+      "method": "planChange",
+      "result": {
+        "kind": "plan",
+        "planId": "plan-one",
+        "action": "connect",
+        "clientId": "codex-local",
+        "targetSummary": "Codex",
+        "rights": {
+          "projectIds": ["project-one"],
+          "canWrite": true
+        },
+        "changes": [
+          {
+            "field": "registration",
+            "change": "add"
+          }
+        ],
+        "retainedFilters": {
+          "hasCustomFilters": false,
+          "enabledToolsCount": 0,
+          "disabledToolsCount": 0,
+          "approvalsPreserved": true
+        },
+        "expectedOwnershipRevision": 0,
+        "expectedProviderVersion": "provider-handle",
+        "digest": "aaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaa",
+        "expiresAt": "2026-02-30T12:00:00Z",
+        "requiredIntent": "connect_scoped_project",
+        "verificationExpectation": "initialize_tools_and_safe_read"
+      }
+    }
+  },
+  {
+    "name": "timestamp checkedAt fraction beyond former forty character cap",
+    "kind": "response",
+    "valid": false,
+    "value": {
+      "version": 1,
+      "requestId": "r",
+      "method": "detectClients",
+      "result": [
+        {
+          "clientId": "codex-local",
+          "displayName": "Codex",
+          "safeVersion": "0.166.0-alpha.5.1",
+          "availability": "writer_unavailable",
+          "registration": "unknown",
+          "ownershipRevision": 0,
+          "allowedActions": [],
+          "credentialState": "grant_required",
+          "protocolCheck": "not_checked",
+          "clientLoad": "unknown",
+          "checkedAt": "2026-10-31T12:00:00.123456789012345678901234Z",
+          "reasonCodes": ["writer_not_certified"]
+        }
+      ]
+    }
+  },
+  {
+    "name": "timestamp expiresAt fraction beyond former forty character cap",
+    "kind": "response",
+    "valid": false,
+    "value": {
+      "version": 1,
+      "requestId": "timestamp-plan",
+      "method": "planChange",
+      "result": {
+        "kind": "plan",
+        "planId": "plan-one",
+        "action": "connect",
+        "clientId": "codex-local",
+        "targetSummary": "Codex",
+        "rights": {
+          "projectIds": ["project-one"],
+          "canWrite": true
+        },
+        "changes": [
+          {
+            "field": "registration",
+            "change": "add"
+          }
+        ],
+        "retainedFilters": {
+          "hasCustomFilters": false,
+          "enabledToolsCount": 0,
+          "disabledToolsCount": 0,
+          "approvalsPreserved": true
+        },
+        "expectedOwnershipRevision": 0,
+        "expectedProviderVersion": "provider-handle",
+        "digest": "aaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaa",
+        "expiresAt": "2026-10-31T12:00:00.123456789012345678901234Z",
+        "requiredIntent": "connect_scoped_project",
+        "verificationExpectation": "initialize_tools_and_safe_read"
+      }
+    }
+  },
+  {
+    "name": "timestamp checkedAt leap day",
+    "kind": "response",
+    "valid": true,
+    "value": {
+      "version": 1,
+      "requestId": "r",
+      "method": "detectClients",
+      "result": [
+        {
+          "clientId": "codex-local",
+          "displayName": "Codex",
+          "safeVersion": "0.166.0-alpha.5.1",
+          "availability": "writer_unavailable",
+          "registration": "unknown",
+          "ownershipRevision": 0,
+          "allowedActions": [],
+          "credentialState": "grant_required",
+          "protocolCheck": "not_checked",
+          "clientLoad": "unknown",
+          "checkedAt": "2024-02-29T12:00:00Z",
+          "reasonCodes": ["writer_not_certified"]
+        }
+      ]
+    }
+  },
+  {
+    "name": "timestamp expiresAt leap day",
+    "kind": "response",
+    "valid": true,
+    "value": {
+      "version": 1,
+      "requestId": "timestamp-plan",
+      "method": "planChange",
+      "result": {
+        "kind": "plan",
+        "planId": "plan-one",
+        "action": "connect",
+        "clientId": "codex-local",
+        "targetSummary": "Codex",
+        "rights": {
+          "projectIds": ["project-one"],
+          "canWrite": true
+        },
+        "changes": [
+          {
+            "field": "registration",
+            "change": "add"
+          }
+        ],
+        "retainedFilters": {
+          "hasCustomFilters": false,
+          "enabledToolsCount": 0,
+          "disabledToolsCount": 0,
+          "approvalsPreserved": true
+        },
+        "expectedOwnershipRevision": 0,
+        "expectedProviderVersion": "provider-handle",
+        "digest": "aaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaa",
+        "expiresAt": "2024-02-29T12:00:00Z",
+        "requiredIntent": "connect_scoped_project",
+        "verificationExpectation": "initialize_tools_and_safe_read"
+      }
+    }
+  },
+  {
+    "name": "timestamp checkedAt nonleap day",
+    "kind": "response",
+    "valid": false,
+    "value": {
+      "version": 1,
+      "requestId": "r",
+      "method": "detectClients",
+      "result": [
+        {
+          "clientId": "codex-local",
+          "displayName": "Codex",
+          "safeVersion": "0.166.0-alpha.5.1",
+          "availability": "writer_unavailable",
+          "registration": "unknown",
+          "ownershipRevision": 0,
+          "allowedActions": [],
+          "credentialState": "grant_required",
+          "protocolCheck": "not_checked",
+          "clientLoad": "unknown",
+          "checkedAt": "2026-02-29T12:00:00Z",
+          "reasonCodes": ["writer_not_certified"]
+        }
+      ]
+    }
+  },
+  {
+    "name": "timestamp expiresAt nonleap day",
+    "kind": "response",
+    "valid": false,
+    "value": {
+      "version": 1,
+      "requestId": "timestamp-plan",
+      "method": "planChange",
+      "result": {
+        "kind": "plan",
+        "planId": "plan-one",
+        "action": "connect",
+        "clientId": "codex-local",
+        "targetSummary": "Codex",
+        "rights": {
+          "projectIds": ["project-one"],
+          "canWrite": true
+        },
+        "changes": [
+          {
+            "field": "registration",
+            "change": "add"
+          }
+        ],
+        "retainedFilters": {
+          "hasCustomFilters": false,
+          "enabledToolsCount": 0,
+          "disabledToolsCount": 0,
+          "approvalsPreserved": true
+        },
+        "expectedOwnershipRevision": 0,
+        "expectedProviderVersion": "provider-handle",
+        "digest": "aaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaa",
+        "expiresAt": "2026-02-29T12:00:00Z",
+        "requiredIntent": "connect_scoped_project",
+        "verificationExpectation": "initialize_tools_and_safe_read"
+      }
+    }
+  },
+  {
+    "name": "timestamp checkedAt Gregorian four hundred year leap",
+    "kind": "response",
+    "valid": true,
+    "value": {
+      "version": 1,
+      "requestId": "r",
+      "method": "detectClients",
+      "result": [
+        {
+          "clientId": "codex-local",
+          "displayName": "Codex",
+          "safeVersion": "0.166.0-alpha.5.1",
+          "availability": "writer_unavailable",
+          "registration": "unknown",
+          "ownershipRevision": 0,
+          "allowedActions": [],
+          "credentialState": "grant_required",
+          "protocolCheck": "not_checked",
+          "clientLoad": "unknown",
+          "checkedAt": "2000-02-29T12:00:00Z",
+          "reasonCodes": ["writer_not_certified"]
+        }
+      ]
+    }
+  },
+  {
+    "name": "timestamp expiresAt Gregorian four hundred year leap",
+    "kind": "response",
+    "valid": true,
+    "value": {
+      "version": 1,
+      "requestId": "timestamp-plan",
+      "method": "planChange",
+      "result": {
+        "kind": "plan",
+        "planId": "plan-one",
+        "action": "connect",
+        "clientId": "codex-local",
+        "targetSummary": "Codex",
+        "rights": {
+          "projectIds": ["project-one"],
+          "canWrite": true
+        },
+        "changes": [
+          {
+            "field": "registration",
+            "change": "add"
+          }
+        ],
+        "retainedFilters": {
+          "hasCustomFilters": false,
+          "enabledToolsCount": 0,
+          "disabledToolsCount": 0,
+          "approvalsPreserved": true
+        },
+        "expectedOwnershipRevision": 0,
+        "expectedProviderVersion": "provider-handle",
+        "digest": "aaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaa",
+        "expiresAt": "2000-02-29T12:00:00Z",
+        "requiredIntent": "connect_scoped_project",
+        "verificationExpectation": "initialize_tools_and_safe_read"
+      }
+    }
+  },
+  {
+    "name": "timestamp checkedAt Gregorian century not leap",
+    "kind": "response",
+    "valid": false,
+    "value": {
+      "version": 1,
+      "requestId": "r",
+      "method": "detectClients",
+      "result": [
+        {
+          "clientId": "codex-local",
+          "displayName": "Codex",
+          "safeVersion": "0.166.0-alpha.5.1",
+          "availability": "writer_unavailable",
+          "registration": "unknown",
+          "ownershipRevision": 0,
+          "allowedActions": [],
+          "credentialState": "grant_required",
+          "protocolCheck": "not_checked",
+          "clientLoad": "unknown",
+          "checkedAt": "1900-02-29T12:00:00Z",
+          "reasonCodes": ["writer_not_certified"]
+        }
+      ]
+    }
+  },
+  {
+    "name": "timestamp expiresAt Gregorian century not leap",
+    "kind": "response",
+    "valid": false,
+    "value": {
+      "version": 1,
+      "requestId": "timestamp-plan",
+      "method": "planChange",
+      "result": {
+        "kind": "plan",
+        "planId": "plan-one",
+        "action": "connect",
+        "clientId": "codex-local",
+        "targetSummary": "Codex",
+        "rights": {
+          "projectIds": ["project-one"],
+          "canWrite": true
+        },
+        "changes": [
+          {
+            "field": "registration",
+            "change": "add"
+          }
+        ],
+        "retainedFilters": {
+          "hasCustomFilters": false,
+          "enabledToolsCount": 0,
+          "disabledToolsCount": 0,
+          "approvalsPreserved": true
+        },
+        "expectedOwnershipRevision": 0,
+        "expectedProviderVersion": "provider-handle",
+        "digest": "aaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaa",
+        "expiresAt": "1900-02-29T12:00:00Z",
+        "requiredIntent": "connect_scoped_project",
+        "verificationExpectation": "initialize_tools_and_safe_read"
+      }
+    }
+  },
+  {
+    "name": "timestamp checkedAt minimum Gregorian year",
+    "kind": "response",
+    "valid": true,
+    "value": {
+      "version": 1,
+      "requestId": "r",
+      "method": "detectClients",
+      "result": [
+        {
+          "clientId": "codex-local",
+          "displayName": "Codex",
+          "safeVersion": "0.166.0-alpha.5.1",
+          "availability": "writer_unavailable",
+          "registration": "unknown",
+          "ownershipRevision": 0,
+          "allowedActions": [],
+          "credentialState": "grant_required",
+          "protocolCheck": "not_checked",
+          "clientLoad": "unknown",
+          "checkedAt": "0001-01-01T00:00:00Z",
+          "reasonCodes": ["writer_not_certified"]
+        }
+      ]
+    }
+  },
+  {
+    "name": "timestamp expiresAt minimum Gregorian year",
+    "kind": "response",
+    "valid": true,
+    "value": {
+      "version": 1,
+      "requestId": "timestamp-plan",
+      "method": "planChange",
+      "result": {
+        "kind": "plan",
+        "planId": "plan-one",
+        "action": "connect",
+        "clientId": "codex-local",
+        "targetSummary": "Codex",
+        "rights": {
+          "projectIds": ["project-one"],
+          "canWrite": true
+        },
+        "changes": [
+          {
+            "field": "registration",
+            "change": "add"
+          }
+        ],
+        "retainedFilters": {
+          "hasCustomFilters": false,
+          "enabledToolsCount": 0,
+          "disabledToolsCount": 0,
+          "approvalsPreserved": true
+        },
+        "expectedOwnershipRevision": 0,
+        "expectedProviderVersion": "provider-handle",
+        "digest": "aaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaa",
+        "expiresAt": "0001-01-01T00:00:00Z",
+        "requiredIntent": "connect_scoped_project",
+        "verificationExpectation": "initialize_tools_and_safe_read"
+      }
+    }
+  },
+  {
+    "name": "timestamp checkedAt year zero",
+    "kind": "response",
+    "valid": false,
+    "value": {
+      "version": 1,
+      "requestId": "r",
+      "method": "detectClients",
+      "result": [
+        {
+          "clientId": "codex-local",
+          "displayName": "Codex",
+          "safeVersion": "0.166.0-alpha.5.1",
+          "availability": "writer_unavailable",
+          "registration": "unknown",
+          "ownershipRevision": 0,
+          "allowedActions": [],
+          "credentialState": "grant_required",
+          "protocolCheck": "not_checked",
+          "clientLoad": "unknown",
+          "checkedAt": "0000-01-01T00:00:00Z",
+          "reasonCodes": ["writer_not_certified"]
+        }
+      ]
+    }
+  },
+  {
+    "name": "timestamp expiresAt year zero",
+    "kind": "response",
+    "valid": false,
+    "value": {
+      "version": 1,
+      "requestId": "timestamp-plan",
+      "method": "planChange",
+      "result": {
+        "kind": "plan",
+        "planId": "plan-one",
+        "action": "connect",
+        "clientId": "codex-local",
+        "targetSummary": "Codex",
+        "rights": {
+          "projectIds": ["project-one"],
+          "canWrite": true
+        },
+        "changes": [
+          {
+            "field": "registration",
+            "change": "add"
+          }
+        ],
+        "retainedFilters": {
+          "hasCustomFilters": false,
+          "enabledToolsCount": 0,
+          "disabledToolsCount": 0,
+          "approvalsPreserved": true
+        },
+        "expectedOwnershipRevision": 0,
+        "expectedProviderVersion": "provider-handle",
+        "digest": "aaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaa",
+        "expiresAt": "0000-01-01T00:00:00Z",
+        "requiredIntent": "connect_scoped_project",
+        "verificationExpectation": "initialize_tools_and_safe_read"
+      }
+    }
+  },
+  {
+    "name": "timestamp checkedAt maximum Gregorian year",
+    "kind": "response",
+    "valid": true,
+    "value": {
+      "version": 1,
+      "requestId": "r",
+      "method": "detectClients",
+      "result": [
+        {
+          "clientId": "codex-local",
+          "displayName": "Codex",
+          "safeVersion": "0.166.0-alpha.5.1",
+          "availability": "writer_unavailable",
+          "registration": "unknown",
+          "ownershipRevision": 0,
+          "allowedActions": [],
+          "credentialState": "grant_required",
+          "protocolCheck": "not_checked",
+          "clientLoad": "unknown",
+          "checkedAt": "9999-12-31T23:59:59Z",
+          "reasonCodes": ["writer_not_certified"]
+        }
+      ]
+    }
+  },
+  {
+    "name": "timestamp expiresAt maximum Gregorian year",
+    "kind": "response",
+    "valid": true,
+    "value": {
+      "version": 1,
+      "requestId": "timestamp-plan",
+      "method": "planChange",
+      "result": {
+        "kind": "plan",
+        "planId": "plan-one",
+        "action": "connect",
+        "clientId": "codex-local",
+        "targetSummary": "Codex",
+        "rights": {
+          "projectIds": ["project-one"],
+          "canWrite": true
+        },
+        "changes": [
+          {
+            "field": "registration",
+            "change": "add"
+          }
+        ],
+        "retainedFilters": {
+          "hasCustomFilters": false,
+          "enabledToolsCount": 0,
+          "disabledToolsCount": 0,
+          "approvalsPreserved": true
+        },
+        "expectedOwnershipRevision": 0,
+        "expectedProviderVersion": "provider-handle",
+        "digest": "aaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaa",
+        "expiresAt": "9999-12-31T23:59:59Z",
+        "requiredIntent": "connect_scoped_project",
+        "verificationExpectation": "initialize_tools_and_safe_read"
+      }
+    }
+  },
+  {
+    "name": "timestamp checkedAt invalid month",
+    "kind": "response",
+    "valid": false,
+    "value": {
+      "version": 1,
+      "requestId": "r",
+      "method": "detectClients",
+      "result": [
+        {
+          "clientId": "codex-local",
+          "displayName": "Codex",
+          "safeVersion": "0.166.0-alpha.5.1",
+          "availability": "writer_unavailable",
+          "registration": "unknown",
+          "ownershipRevision": 0,
+          "allowedActions": [],
+          "credentialState": "grant_required",
+          "protocolCheck": "not_checked",
+          "clientLoad": "unknown",
+          "checkedAt": "2026-13-01T00:00:00Z",
+          "reasonCodes": ["writer_not_certified"]
+        }
+      ]
+    }
+  },
+  {
+    "name": "timestamp expiresAt invalid month",
+    "kind": "response",
+    "valid": false,
+    "value": {
+      "version": 1,
+      "requestId": "timestamp-plan",
+      "method": "planChange",
+      "result": {
+        "kind": "plan",
+        "planId": "plan-one",
+        "action": "connect",
+        "clientId": "codex-local",
+        "targetSummary": "Codex",
+        "rights": {
+          "projectIds": ["project-one"],
+          "canWrite": true
+        },
+        "changes": [
+          {
+            "field": "registration",
+            "change": "add"
+          }
+        ],
+        "retainedFilters": {
+          "hasCustomFilters": false,
+          "enabledToolsCount": 0,
+          "disabledToolsCount": 0,
+          "approvalsPreserved": true
+        },
+        "expectedOwnershipRevision": 0,
+        "expectedProviderVersion": "provider-handle",
+        "digest": "aaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaa",
+        "expiresAt": "2026-13-01T00:00:00Z",
+        "requiredIntent": "connect_scoped_project",
+        "verificationExpectation": "initialize_tools_and_safe_read"
+      }
+    }
+  },
+  {
+    "name": "timestamp checkedAt invalid day zero",
+    "kind": "response",
+    "valid": false,
+    "value": {
+      "version": 1,
+      "requestId": "r",
+      "method": "detectClients",
+      "result": [
+        {
+          "clientId": "codex-local",
+          "displayName": "Codex",
+          "safeVersion": "0.166.0-alpha.5.1",
+          "availability": "writer_unavailable",
+          "registration": "unknown",
+          "ownershipRevision": 0,
+          "allowedActions": [],
+          "credentialState": "grant_required",
+          "protocolCheck": "not_checked",
+          "clientLoad": "unknown",
+          "checkedAt": "2026-01-00T00:00:00Z",
+          "reasonCodes": ["writer_not_certified"]
+        }
+      ]
+    }
+  },
+  {
+    "name": "timestamp expiresAt invalid day zero",
+    "kind": "response",
+    "valid": false,
+    "value": {
+      "version": 1,
+      "requestId": "timestamp-plan",
+      "method": "planChange",
+      "result": {
+        "kind": "plan",
+        "planId": "plan-one",
+        "action": "connect",
+        "clientId": "codex-local",
+        "targetSummary": "Codex",
+        "rights": {
+          "projectIds": ["project-one"],
+          "canWrite": true
+        },
+        "changes": [
+          {
+            "field": "registration",
+            "change": "add"
+          }
+        ],
+        "retainedFilters": {
+          "hasCustomFilters": false,
+          "enabledToolsCount": 0,
+          "disabledToolsCount": 0,
+          "approvalsPreserved": true
+        },
+        "expectedOwnershipRevision": 0,
+        "expectedProviderVersion": "provider-handle",
+        "digest": "aaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaa",
+        "expiresAt": "2026-01-00T00:00:00Z",
+        "requiredIntent": "connect_scoped_project",
+        "verificationExpectation": "initialize_tools_and_safe_read"
+      }
+    }
+  },
+  {
+    "name": "timestamp checkedAt invalid hour twenty four",
+    "kind": "response",
+    "valid": false,
+    "value": {
+      "version": 1,
+      "requestId": "r",
+      "method": "detectClients",
+      "result": [
+        {
+          "clientId": "codex-local",
+          "displayName": "Codex",
+          "safeVersion": "0.166.0-alpha.5.1",
+          "availability": "writer_unavailable",
+          "registration": "unknown",
+          "ownershipRevision": 0,
+          "allowedActions": [],
+          "credentialState": "grant_required",
+          "protocolCheck": "not_checked",
+          "clientLoad": "unknown",
+          "checkedAt": "2026-10-31T24:00:00Z",
+          "reasonCodes": ["writer_not_certified"]
+        }
+      ]
+    }
+  },
+  {
+    "name": "timestamp expiresAt invalid hour twenty four",
+    "kind": "response",
+    "valid": false,
+    "value": {
+      "version": 1,
+      "requestId": "timestamp-plan",
+      "method": "planChange",
+      "result": {
+        "kind": "plan",
+        "planId": "plan-one",
+        "action": "connect",
+        "clientId": "codex-local",
+        "targetSummary": "Codex",
+        "rights": {
+          "projectIds": ["project-one"],
+          "canWrite": true
+        },
+        "changes": [
+          {
+            "field": "registration",
+            "change": "add"
+          }
+        ],
+        "retainedFilters": {
+          "hasCustomFilters": false,
+          "enabledToolsCount": 0,
+          "disabledToolsCount": 0,
+          "approvalsPreserved": true
+        },
+        "expectedOwnershipRevision": 0,
+        "expectedProviderVersion": "provider-handle",
+        "digest": "aaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaa",
+        "expiresAt": "2026-10-31T24:00:00Z",
+        "requiredIntent": "connect_scoped_project",
+        "verificationExpectation": "initialize_tools_and_safe_read"
+      }
+    }
+  },
+  {
+    "name": "timestamp checkedAt leap second excluded",
+    "kind": "response",
+    "valid": false,
+    "value": {
+      "version": 1,
+      "requestId": "r",
+      "method": "detectClients",
+      "result": [
+        {
+          "clientId": "codex-local",
+          "displayName": "Codex",
+          "safeVersion": "0.166.0-alpha.5.1",
+          "availability": "writer_unavailable",
+          "registration": "unknown",
+          "ownershipRevision": 0,
+          "allowedActions": [],
+          "credentialState": "grant_required",
+          "protocolCheck": "not_checked",
+          "clientLoad": "unknown",
+          "checkedAt": "2026-10-31T12:00:60Z",
+          "reasonCodes": ["writer_not_certified"]
+        }
+      ]
+    }
+  },
+  {
+    "name": "timestamp expiresAt leap second excluded",
+    "kind": "response",
+    "valid": false,
+    "value": {
+      "version": 1,
+      "requestId": "timestamp-plan",
+      "method": "planChange",
+      "result": {
+        "kind": "plan",
+        "planId": "plan-one",
+        "action": "connect",
+        "clientId": "codex-local",
+        "targetSummary": "Codex",
+        "rights": {
+          "projectIds": ["project-one"],
+          "canWrite": true
+        },
+        "changes": [
+          {
+            "field": "registration",
+            "change": "add"
+          }
+        ],
+        "retainedFilters": {
+          "hasCustomFilters": false,
+          "enabledToolsCount": 0,
+          "disabledToolsCount": 0,
+          "approvalsPreserved": true
+        },
+        "expectedOwnershipRevision": 0,
+        "expectedProviderVersion": "provider-handle",
+        "digest": "aaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaa",
+        "expiresAt": "2026-10-31T12:00:60Z",
+        "requiredIntent": "connect_scoped_project",
+        "verificationExpectation": "initialize_tools_and_safe_read"
+      }
+    }
+  },
+  {
+    "name": "timestamp checkedAt single fractional digit",
+    "kind": "response",
+    "valid": true,
+    "value": {
+      "version": 1,
+      "requestId": "r",
+      "method": "detectClients",
+      "result": [
+        {
+          "clientId": "codex-local",
+          "displayName": "Codex",
+          "safeVersion": "0.166.0-alpha.5.1",
+          "availability": "writer_unavailable",
+          "registration": "unknown",
+          "ownershipRevision": 0,
+          "allowedActions": [],
+          "credentialState": "grant_required",
+          "protocolCheck": "not_checked",
+          "clientLoad": "unknown",
+          "checkedAt": "2026-10-31T12:00:00.1Z",
+          "reasonCodes": ["writer_not_certified"]
+        }
+      ]
+    }
+  },
+  {
+    "name": "timestamp expiresAt single fractional digit",
+    "kind": "response",
+    "valid": true,
+    "value": {
+      "version": 1,
+      "requestId": "timestamp-plan",
+      "method": "planChange",
+      "result": {
+        "kind": "plan",
+        "planId": "plan-one",
+        "action": "connect",
+        "clientId": "codex-local",
+        "targetSummary": "Codex",
+        "rights": {
+          "projectIds": ["project-one"],
+          "canWrite": true
+        },
+        "changes": [
+          {
+            "field": "registration",
+            "change": "add"
+          }
+        ],
+        "retainedFilters": {
+          "hasCustomFilters": false,
+          "enabledToolsCount": 0,
+          "disabledToolsCount": 0,
+          "approvalsPreserved": true
+        },
+        "expectedOwnershipRevision": 0,
+        "expectedProviderVersion": "provider-handle",
+        "digest": "aaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaa",
+        "expiresAt": "2026-10-31T12:00:00.1Z",
+        "requiredIntent": "connect_scoped_project",
+        "verificationExpectation": "initialize_tools_and_safe_read"
+      }
+    }
+  },
+  {
+    "name": "timestamp checkedAt nine fractional digits",
+    "kind": "response",
+    "valid": true,
+    "value": {
+      "version": 1,
+      "requestId": "r",
+      "method": "detectClients",
+      "result": [
+        {
+          "clientId": "codex-local",
+          "displayName": "Codex",
+          "safeVersion": "0.166.0-alpha.5.1",
+          "availability": "writer_unavailable",
+          "registration": "unknown",
+          "ownershipRevision": 0,
+          "allowedActions": [],
+          "credentialState": "grant_required",
+          "protocolCheck": "not_checked",
+          "clientLoad": "unknown",
+          "checkedAt": "2026-10-31T12:00:00.123456789Z",
+          "reasonCodes": ["writer_not_certified"]
+        }
+      ]
+    }
+  },
+  {
+    "name": "timestamp expiresAt nine fractional digits",
+    "kind": "response",
+    "valid": true,
+    "value": {
+      "version": 1,
+      "requestId": "timestamp-plan",
+      "method": "planChange",
+      "result": {
+        "kind": "plan",
+        "planId": "plan-one",
+        "action": "connect",
+        "clientId": "codex-local",
+        "targetSummary": "Codex",
+        "rights": {
+          "projectIds": ["project-one"],
+          "canWrite": true
+        },
+        "changes": [
+          {
+            "field": "registration",
+            "change": "add"
+          }
+        ],
+        "retainedFilters": {
+          "hasCustomFilters": false,
+          "enabledToolsCount": 0,
+          "disabledToolsCount": 0,
+          "approvalsPreserved": true
+        },
+        "expectedOwnershipRevision": 0,
+        "expectedProviderVersion": "provider-handle",
+        "digest": "aaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaa",
+        "expiresAt": "2026-10-31T12:00:00.123456789Z",
+        "requiredIntent": "connect_scoped_project",
+        "verificationExpectation": "initialize_tools_and_safe_read"
+      }
+    }
+  },
+  {
+    "name": "timestamp checkedAt ten fractional digits",
+    "kind": "response",
+    "valid": false,
+    "value": {
+      "version": 1,
+      "requestId": "r",
+      "method": "detectClients",
+      "result": [
+        {
+          "clientId": "codex-local",
+          "displayName": "Codex",
+          "safeVersion": "0.166.0-alpha.5.1",
+          "availability": "writer_unavailable",
+          "registration": "unknown",
+          "ownershipRevision": 0,
+          "allowedActions": [],
+          "credentialState": "grant_required",
+          "protocolCheck": "not_checked",
+          "clientLoad": "unknown",
+          "checkedAt": "2026-10-31T12:00:00.1234567890Z",
+          "reasonCodes": ["writer_not_certified"]
+        }
+      ]
+    }
+  },
+  {
+    "name": "timestamp expiresAt ten fractional digits",
+    "kind": "response",
+    "valid": false,
+    "value": {
+      "version": 1,
+      "requestId": "timestamp-plan",
+      "method": "planChange",
+      "result": {
+        "kind": "plan",
+        "planId": "plan-one",
+        "action": "connect",
+        "clientId": "codex-local",
+        "targetSummary": "Codex",
+        "rights": {
+          "projectIds": ["project-one"],
+          "canWrite": true
+        },
+        "changes": [
+          {
+            "field": "registration",
+            "change": "add"
+          }
+        ],
+        "retainedFilters": {
+          "hasCustomFilters": false,
+          "enabledToolsCount": 0,
+          "disabledToolsCount": 0,
+          "approvalsPreserved": true
+        },
+        "expectedOwnershipRevision": 0,
+        "expectedProviderVersion": "provider-handle",
+        "digest": "aaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaa",
+        "expiresAt": "2026-10-31T12:00:00.1234567890Z",
+        "requiredIntent": "connect_scoped_project",
+        "verificationExpectation": "initialize_tools_and_safe_read"
+      }
+    }
+  },
+  {
+    "name": "timestamp checkedAt empty fractional part",
+    "kind": "response",
+    "valid": false,
+    "value": {
+      "version": 1,
+      "requestId": "r",
+      "method": "detectClients",
+      "result": [
+        {
+          "clientId": "codex-local",
+          "displayName": "Codex",
+          "safeVersion": "0.166.0-alpha.5.1",
+          "availability": "writer_unavailable",
+          "registration": "unknown",
+          "ownershipRevision": 0,
+          "allowedActions": [],
+          "credentialState": "grant_required",
+          "protocolCheck": "not_checked",
+          "clientLoad": "unknown",
+          "checkedAt": "2026-10-31T12:00:00.Z",
+          "reasonCodes": ["writer_not_certified"]
+        }
+      ]
+    }
+  },
+  {
+    "name": "timestamp expiresAt empty fractional part",
+    "kind": "response",
+    "valid": false,
+    "value": {
+      "version": 1,
+      "requestId": "timestamp-plan",
+      "method": "planChange",
+      "result": {
+        "kind": "plan",
+        "planId": "plan-one",
+        "action": "connect",
+        "clientId": "codex-local",
+        "targetSummary": "Codex",
+        "rights": {
+          "projectIds": ["project-one"],
+          "canWrite": true
+        },
+        "changes": [
+          {
+            "field": "registration",
+            "change": "add"
+          }
+        ],
+        "retainedFilters": {
+          "hasCustomFilters": false,
+          "enabledToolsCount": 0,
+          "disabledToolsCount": 0,
+          "approvalsPreserved": true
+        },
+        "expectedOwnershipRevision": 0,
+        "expectedProviderVersion": "provider-handle",
+        "digest": "aaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaa",
+        "expiresAt": "2026-10-31T12:00:00.Z",
+        "requiredIntent": "connect_scoped_project",
+        "verificationExpectation": "initialize_tools_and_safe_read"
+      }
+    }
+  },
+  {
+    "name": "timestamp checkedAt offset excluded literal Z only",
+    "kind": "response",
+    "valid": false,
+    "value": {
+      "version": 1,
+      "requestId": "r",
+      "method": "detectClients",
+      "result": [
+        {
+          "clientId": "codex-local",
+          "displayName": "Codex",
+          "safeVersion": "0.166.0-alpha.5.1",
+          "availability": "writer_unavailable",
+          "registration": "unknown",
+          "ownershipRevision": 0,
+          "allowedActions": [],
+          "credentialState": "grant_required",
+          "protocolCheck": "not_checked",
+          "clientLoad": "unknown",
+          "checkedAt": "2026-10-31T12:00:00+00:00",
+          "reasonCodes": ["writer_not_certified"]
+        }
+      ]
+    }
+  },
+  {
+    "name": "timestamp expiresAt offset excluded literal Z only",
+    "kind": "response",
+    "valid": false,
+    "value": {
+      "version": 1,
+      "requestId": "timestamp-plan",
+      "method": "planChange",
+      "result": {
+        "kind": "plan",
+        "planId": "plan-one",
+        "action": "connect",
+        "clientId": "codex-local",
+        "targetSummary": "Codex",
+        "rights": {
+          "projectIds": ["project-one"],
+          "canWrite": true
+        },
+        "changes": [
+          {
+            "field": "registration",
+            "change": "add"
+          }
+        ],
+        "retainedFilters": {
+          "hasCustomFilters": false,
+          "enabledToolsCount": 0,
+          "disabledToolsCount": 0,
+          "approvalsPreserved": true
+        },
+        "expectedOwnershipRevision": 0,
+        "expectedProviderVersion": "provider-handle",
+        "digest": "aaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaa",
+        "expiresAt": "2026-10-31T12:00:00+00:00",
+        "requiredIntent": "connect_scoped_project",
+        "verificationExpectation": "initialize_tools_and_safe_read"
+      }
+    }
+  },
+  {
+    "name": "timestamp checkedAt trailing newline rejected",
+    "kind": "response",
+    "valid": false,
+    "value": {
+      "version": 1,
+      "requestId": "r",
+      "method": "detectClients",
+      "result": [
+        {
+          "clientId": "codex-local",
+          "displayName": "Codex",
+          "safeVersion": "0.166.0-alpha.5.1",
+          "availability": "writer_unavailable",
+          "registration": "unknown",
+          "ownershipRevision": 0,
+          "allowedActions": [],
+          "credentialState": "grant_required",
+          "protocolCheck": "not_checked",
+          "clientLoad": "unknown",
+          "checkedAt": "2026-10-31T12:00:00Z\n",
+          "reasonCodes": ["writer_not_certified"]
+        }
+      ]
+    }
+  },
+  {
+    "name": "timestamp expiresAt trailing newline rejected",
+    "kind": "response",
+    "valid": false,
+    "value": {
+      "version": 1,
+      "requestId": "timestamp-plan",
+      "method": "planChange",
+      "result": {
+        "kind": "plan",
+        "planId": "plan-one",
+        "action": "connect",
+        "clientId": "codex-local",
+        "targetSummary": "Codex",
+        "rights": {
+          "projectIds": ["project-one"],
+          "canWrite": true
+        },
+        "changes": [
+          {
+            "field": "registration",
+            "change": "add"
+          }
+        ],
+        "retainedFilters": {
+          "hasCustomFilters": false,
+          "enabledToolsCount": 0,
+          "disabledToolsCount": 0,
+          "approvalsPreserved": true
+        },
+        "expectedOwnershipRevision": 0,
+        "expectedProviderVersion": "provider-handle",
+        "digest": "aaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaa",
+        "expiresAt": "2026-10-31T12:00:00Z\n",
+        "requiredIntent": "connect_scoped_project",
+        "verificationExpectation": "initialize_tools_and_safe_read"
+      }
+    }
+  }
+]
