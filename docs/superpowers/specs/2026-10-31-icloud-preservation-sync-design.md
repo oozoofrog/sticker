@@ -18,7 +18,7 @@ These are proposed engineering defaults under the user's instruction to avoid te
 
 ## Evidence and current limits
 
-The source-backed [feasibility report](../../../test-results/github-app-plan/icloud-feasibility.md) contains 26 Apple documentation links and read-only evidence for the installed app. Its observed app is ad hoc signed, `TeamIdentifier=not set`, has no entitlements/profile and targets macOS 11.3. No current app-container CloudKit access is established. The report's installed SDK observation is tooling evidence only.
+The current source installer creates an ad hoc signed app targeting macOS 11.3. This foundation adds no Apple entitlements, provisioning profile, account access or CloudKit container. A future native adapter must satisfy Apple's supported signing and iCloud capability requirements and verify them separately; a local SDK or successful synthetic test is not evidence of account connectivity. The official API references below define the proposed integration boundaries.
 
 Current paths: `server/domain.ts`, `server/store-context.ts`, `server/migrations/001-initial.ts` through `010-github-app-sync.ts`, `server/features/resources.ts`, `server/features/relations.ts`, `server/backup-validation.ts`, `server/maintenance.ts`, `scripts/backup.sh`, `scripts/restore.sh`, `packaging/macos/{AccessCore,StickerApp}.swift`. README describes Node 24/SQLite WAL, Docker-owned local DB/uploads, a native AppKit/WKWebView shell and shared HTTP/domain behavior for UI and MCP. Existing backup stops the service; existing restore validates staged data and leaves it stopped. GitHub restore preparation already disables its binding and marks queued/sending jobs uncertain. That is insufficient for the new credential-free archive and account fence.
 
