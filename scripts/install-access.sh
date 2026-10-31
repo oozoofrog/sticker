@@ -108,7 +108,9 @@ else
     [[ "$(/usr/bin/osascript -l JavaScript "$ROOT/packaging/macos/is-running.jxa" "$target")" = stopped ]] || fail '기존 스티커 접근 앱을 종료한 뒤 설치하세요.'
   fi
   mkdir -p "$stage/Sticker.app/Contents/MacOS" "$stage/Sticker.app/Contents/Resources" "$stage/module-cache"
-  "$compiler" -parse-as-library -swift-version 5 -target "$architecture-apple-macosx11.3" -sdk "$sdk" -module-cache-path "$stage/module-cache" -framework AppKit -framework WebKit "$ROOT/packaging/macos/AccessCore.swift" "$ROOT/packaging/macos/StickerApp.swift" "$ROOT/packaging/macos/Main.swift" -o "$stage/Sticker.app/Contents/MacOS/Sticker"
+  # xcrun supplies SDKROOT to the linker as well as selecting the compiler.
+  # Direct swiftc can otherwise stamp the deployment target as the linked SDK.
+  /usr/bin/xcrun --sdk macosx swiftc -parse-as-library -swift-version 5 -target "$architecture-apple-macosx11.3" -sdk "$sdk" -module-cache-path "$stage/module-cache" -framework AppKit -framework WebKit "$ROOT/packaging/macos/AccessCore.swift" "$ROOT/packaging/macos/StickerApp.swift" "$ROOT/packaging/macos/Main.swift" -o "$stage/Sticker.app/Contents/MacOS/Sticker"
   cat > "$stage/Sticker.app/Contents/Info.plist" <<'PLIST'
 <?xml version="1.0" encoding="UTF-8"?><!DOCTYPE plist PUBLIC "-//Apple//DTD PLIST 1.0//EN" "http://www.apple.com/DTDs/PropertyList-1.0.dtd"><plist version="1.0"><dict><key>CFBundleExecutable</key><string>Sticker</string><key>CFBundleIdentifier</key><string>org.oozoofrog.sticker.access</string><key>CFBundleName</key><string>Sticker</string><key>CFBundlePackageType</key><string>APPL</string><key>CFBundleVersion</key><string>2</string><key>LSMinimumSystemVersion</key><string>11.3</string><key>NSPrincipalClass</key><string>StickerApplication</string><key>NSHighResolutionCapable</key><true/></dict></plist>
 PLIST

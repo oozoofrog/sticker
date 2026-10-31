@@ -1083,6 +1083,29 @@ void test(
       assert.equal(result.status, 0, result.stderr);
       const executable = join(target, "Contents/MacOS/Sticker");
       assert.equal(lstatSync(executable).isFile(), true);
+      // WebKit uses the linked SDK version for compatibility behavior. A valid
+      // signature alone did not catch an installer that linked as SDK 11.3.
+      const selectedSdk = spawnSync(
+        "/usr/bin/xcrun",
+        ["--sdk", "macosx", "--show-sdk-version"],
+        { encoding: "utf8" },
+      );
+      assert.equal(selectedSdk.status, 0, selectedSdk.stderr);
+      const build = spawnSync("/usr/bin/otool", ["-l", executable], {
+        encoding: "utf8",
+      });
+      assert.equal(build.status, 0, build.stderr);
+      const metadata = build.stdout.match(
+        /cmd LC_BUILD_VERSION[\s\S]*?\n\s+minos (\S+)\n\s+sdk (\S+)/,
+      );
+      assert.ok(metadata, "installed app has linked SDK metadata");
+      const version = (value: string) => value.trim().replace(/(?:\.0)+$/, "");
+      assert.equal(version(metadata[1]), "11.3", "minimum OS remains 11.3");
+      assert.equal(
+        version(metadata[2]),
+        version(selectedSdk.stdout),
+        "linked SDK matches selected SDK instead of the deployment target",
+      );
       assert.equal(
         spawnSync("/usr/bin/codesign", [
           "--verify",
