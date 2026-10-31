@@ -1,0 +1,14 @@
+{
+  "kind": "sticker_native",
+  "installationId": "installation-one",
+  "connectionId": "connection-one",
+  "launcherVersion": "1.0.0",
+  "enabledTools": ["sticker_list_projects", "sticker_get_issue"],
+  "disabledTools": ["sticker_delete_issue"],
+  "toolApprovals": {
+    "sticker_update_issue": "prompt"
+  },
+  "unmanagedFields": {
+    "fixtureHint": "keep"
+  }
+}

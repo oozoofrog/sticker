@@ -1,0 +1,26 @@
+{
+  "result": {
+    "layers": [
+      {
+        "name": {
+          "type": "user",
+          "file": "/fixture/codex/config.toml",
+          "profile": null
+        },
+        "version": "layer-0",
+        "config": {
+          "mcp_servers": {
+            "sticker": {
+              "command": "/fixture/StickerLauncher",
+              "args": ["installation-one", "connection-one", "1.0.0"],
+              "enabled_tools": ["sticker_list_projects", "sticker_get_issue"],
+              "disabled_tools": ["sticker_delete_issue"],
+              "fixture_approvals": { "sticker_update_issue": "prompt" },
+              "fixture_unmanaged": { "counter": 9007199254740993 }
+            }
+          }
+        }
+      }
+    ]
+  }
+}

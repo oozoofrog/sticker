@@ -1,4 +1,6 @@
 import { ClientGrantService } from "./features/client-grants.js";
+import type { DatabaseSync } from "node:sqlite";
+import type { IssueMutationObserver } from "./store-context.js";
 import { attachmentFileReceipt } from "./file-transfer-receipts.js";
 import { attachmentOperationStatusSchema } from "./contracts/file-transfers.js";
 import type { StoredFile } from "./file-storage.js";
@@ -281,6 +283,10 @@ export class Store {
         }),
       origin,
     );
+  }
+  /** Internal composition only; never exposed as an HTTP/MCP registration API. */
+  observeIssueMutations(factory: (db: DatabaseSync) => IssueMutationObserver) {
+    return this.context.observeIssueMutations(factory(this.context.db));
   }
   close() {
     this.context.db.close();

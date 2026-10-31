@@ -1,0 +1,52 @@
+{
+  "schemaVersion": 1,
+  "sourceVersion": "0.165.0-alpha.1.2",
+  "scope": "Reduced public-schema and recorded synthetic semantics; renamed fixture identifiers; not installed-runtime certification",
+  "deleteSemanticsProven": false,
+  "userLayer": {
+    "name": {
+      "type": "user",
+      "file": "/fixture/codex/config.toml",
+      "profile": null
+    },
+    "version": "fixture-user-version",
+    "config": {}
+  },
+  "writeOutcomes": [
+    {
+      "expected": "applied",
+      "response": {
+        "result": {
+          "status": "ok",
+          "version": "different-fixture-receipt-version",
+          "filePath": "/fixture/codex/config.toml",
+          "overriddenMetadata": null
+        }
+      }
+    },
+    {
+      "expected": "conflict",
+      "response": {
+        "error": {
+          "code": -32600,
+          "data": {
+            "config_write_error_code": "configVersionConflict"
+          },
+          "message": "Synthetic conflict"
+        }
+      }
+    },
+    {
+      "expected": "invalid",
+      "response": {
+        "error": {
+          "code": -32600,
+          "data": {
+            "config_write_error_code": "configValidationError"
+          },
+          "message": "Synthetic validation failure"
+        }
+      }
+    }
+  ]
+}
