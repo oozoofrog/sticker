@@ -11,6 +11,10 @@ import Foundation
             try ownershipTests(output:URL(fileURLWithPath:arguments[2],isDirectory:true))
             try planTests()
             #endif
+            #if TASK3
+            try await writerGateTests()
+            try await codexWriterConformanceTests(fixtures:URL(fileURLWithPath:arguments[1]).deletingLastPathComponent().appendingPathComponent("writer-contract.json"))
+            #endif
             print("PASS \(Check.count) native client lifecycle checks")
         } catch {
             let code = (error as? LifecycleFailure)?.rawValue ?? "fixture_failure"
