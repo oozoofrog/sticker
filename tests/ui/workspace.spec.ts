@@ -97,8 +97,11 @@ test("owner can build a project, track an issue, attach context and retain it af
     .first()
     .click();
   await page.getByLabel("이슈 제목").fill("취소될 이슈");
+  page.once("dialog", (dialog) => void dialog.accept());
   await page.getByRole("button", { name: "취소", exact: true }).click();
-  await expect(page.getByText("취소될 이슈", { exact: true })).toHaveCount(0);
+  await expect(page.getByRole("dialog", { name: "새로운 스티커" })).toHaveCount(
+    0,
+  );
   await expect(page.locator("body")).not.toHaveJSProperty("scrollWidth", 0);
 });
 

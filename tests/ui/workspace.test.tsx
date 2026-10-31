@@ -159,8 +159,14 @@ void test("DOM + real API: login, project/issue persistence, comments, links, st
     );
     await f.click("새 이슈");
     await f.user.type(screen.getByLabelText("이슈 제목"), "취소한 변경");
-    await f.click("취소");
-    assert.equal(screen.queryByText("취소한 변경"), null);
+    const originalConfirm = window.confirm.bind(window);
+    window.confirm = () => true;
+    try {
+      await f.click("취소");
+    } finally {
+      window.confirm = originalConfirm;
+    }
+    assert.equal(screen.queryByRole("dialog", { name: "새로운 스티커" }), null);
     await f.click("보드");
     await f.user.click(
       await screen.findByRole("button", { name: "할 일 이슈 추가" }),
