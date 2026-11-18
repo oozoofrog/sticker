@@ -1,6 +1,6 @@
 # One official multi-architecture OCI index; build/runtime inherit the same pristine base.
 # Pin evidence and update policy: docs/REPRODUCIBILITY.md (never replace with an arch digest).
-FROM node:24.22.1-bookworm-slim@sha256:be8204d4bd327363357f532187b752ff62759c31bedf98e9e18fc08c9cbd605c AS base
+FROM node:24.22.3-bookworm-slim@sha256:dc26ae92c9fb15cf6b1d63e20f0944b2efe0f115b20e00be48fb23fceb061c54 AS base
 FROM base AS build
 WORKDIR /app
 COPY package.json package-lock.json ./
